@@ -1,0 +1,9 @@
+{
+  // A consumer's app shape (`apps/gateway/tsconfig.json` over the root): consumer-default strict
+  // flags, workers-types, ts-reset loaded.
+  "extends": "../pure/tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["*.ts"]
+}

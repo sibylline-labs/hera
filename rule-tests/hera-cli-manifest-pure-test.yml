@@ -1,0 +1,27 @@
+id: hera-cli-manifest-pure
+valid:
+  - |
+    import type { HeraCliFlag } from "./types.js";
+  - |
+    export * from "./flag.js";
+  - |
+    export { defineVerb } from "./define.js";
+  - |
+    const m = await import("./completion.js");
+  - |
+    const s = "effect/Schema";
+invalid:
+  - |
+    import * as Schema from "effect/Schema";
+  - |
+    import { ErisError } from "../errors/index.js";
+  - |
+    import type { HeraCliCtxShape } from "../runtime/cli-ctx.js";
+  - |
+    import { readFileSync } from "node:fs";
+  - |
+    export * from "../runtime/index.js";
+  - |
+    const h = await import("../runtime/program.js");
+  - |
+    import { x } from "./sub/x.js";

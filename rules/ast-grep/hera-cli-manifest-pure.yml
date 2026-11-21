@@ -1,0 +1,27 @@
+id: hera-cli-manifest-pure
+language: TypeScript
+severity: error
+message: >-
+  src/cli/manifest/ is the pure half of the CLI host: a binary loads it to answer --help and
+  completion within the cold-start budget, so it may import only its own siblings ("./x.js"):
+  no effect, no node:*, no other Hera plane, no handler module. Put runtime work in
+  src/cli/runtime/ and reach it through a verb's lazy `load` thunk.
+files:
+  - "src/cli/manifest/**/*.ts"
+utils:
+  specifier:
+    kind: string
+    any:
+      - inside: { kind: import_statement, field: source }
+      - inside: { kind: export_statement, field: source }
+      - inside:
+          kind: arguments
+          inside:
+            kind: call_expression
+            any:
+              - has: { field: function, kind: import }
+              - has: { field: function, regex: "^require$" }
+rule:
+  matches: specifier
+  not:
+    regex: "^[\"']\\./[^/]+[\"']$"

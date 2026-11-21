@@ -1,0 +1,29 @@
+id: hera-single-fn-syntax
+language: TypeScript
+severity: error
+message: >-
+  Use Hera.fn("Service.operation")(function* () { ... }) instead of raw Effect.gen,
+  raw Effect.fn, or multi-step Effect.flatMap pipelines. Hera.fn binds
+  the span name into structured logs, traces execution, and enforces a single generator
+  syntax across all Hera services.
+files:
+  - "src/**/*.ts"
+  - "apps/**/*.ts"
+  - "packages/**/*.ts"
+ignores:
+  - "**/test/**"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "src/core/fn/**"
+  - "src/core/http/**"
+  - "src/server/routes/**"
+  - "src/server/rpc/**"
+  - "src/server/durable-object/**"
+  - "src/cli/**"
+rule:
+  any:
+    - pattern: Effect.gen($$$)
+    - pattern: Effect.fn($$$)
+    - pattern: Effect.fnUntraced($$$)
+    - pattern: pipe($A, Effect.flatMap($F1), Effect.flatMap($F2))
+    - pattern: $A.pipe(Effect.flatMap($F1), Effect.flatMap($F2))

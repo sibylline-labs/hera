@@ -1,0 +1,6 @@
+{
+  // eris-internal / pure-package test shape: no ambient runtime types, ts-reset loaded. `/testing`
+  // must not reach the DO harness (workers-types + node); that lives at `/testing/durable-object`.
+  "extends": "../pure/tsconfig.json",
+  "include": ["*.ts"]
+}

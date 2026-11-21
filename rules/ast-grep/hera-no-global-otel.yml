@@ -1,0 +1,17 @@
+id: hera-no-global-otel
+language: TypeScript
+severity: error
+message: >-
+  Do not register OpenTelemetry globals or read the global tracer. A Durable Object isolate is shared
+  by every tenant, so a module-scope provider or tracer leaks one tenant's spans, processors and
+  content settings into another. Build the provider per instance (HeraAgentTelemetry.make) and use
+  its own provider.getTracer(...).
+files:
+  - "src/**/*.ts"
+rule:
+  any:
+    - pattern: $_.setGlobalTracerProvider($$$)
+    - pattern: $_.setGlobalContextManager($$$)
+    - pattern: $_.setGlobalPropagator($$$)
+    - pattern: trace.getTracer($$$)
+    - pattern: $_.trace.getTracer($$$)

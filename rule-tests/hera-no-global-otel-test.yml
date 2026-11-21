@@ -1,0 +1,32 @@
+id: hera-no-global-otel
+valid:
+  - |
+    const tracer = provider.getTracer("hera.agent");
+  - |
+    const ctx = trace.setSpan(ROOT_CONTEXT, span);
+  - |
+    const ctx = trace.setSpanContext(ROOT_CONTEXT, spanContext);
+  - |
+    const current = trace.getTracerProvider();
+  - |
+    const note = "trace.getTracer is banned";
+  - |
+    // no setGlobalTracerProvider here
+    export const x = 1;
+invalid:
+  - |
+    trace.setGlobalTracerProvider(provider);
+  - |
+    context.setGlobalContextManager(manager);
+  - |
+    propagation.setGlobalPropagator(propagator);
+  - |
+    api.trace.setGlobalTracerProvider(provider);
+  - |
+    otel.setGlobalTracerProvider(provider);
+  - |
+    const tracer = trace.getTracer("x");
+  - |
+    function f() { return trace.getTracer("x"); }
+  - |
+    const tracer = api.trace.getTracer("x");

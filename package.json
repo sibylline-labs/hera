@@ -1,0 +1,204 @@
+{
+  "name": "@sibylline-labs/hera",
+  "version": "0.2.0",
+  "description": "Opinionated Effect v4 LTS runtime for Sibylline TypeScript & Cloudflare Workers/DOs.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sibylline-labs/hera.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./core": {
+      "types": "./src/core/index.ts",
+      "default": "./src/core/index.ts"
+    },
+    "./schema": {
+      "types": "./src/core/schema/index.ts",
+      "default": "./src/core/schema/index.ts"
+    },
+    "./config": {
+      "types": "./src/core/config/index.ts",
+      "default": "./src/core/config/index.ts"
+    },
+    "./flags": {
+      "types": "./src/core/flags/index.ts",
+      "default": "./src/core/flags/index.ts"
+    },
+    "./authority": {
+      "types": "./src/core/authority/index.ts",
+      "default": "./src/core/authority/index.ts"
+    },
+    "./ctx": {
+      "types": "./src/core/context/index.ts",
+      "default": "./src/core/context/index.ts"
+    },
+    "./context": {
+      "types": "./src/core/context/index.ts",
+      "default": "./src/core/context/index.ts"
+    },
+    "./error": {
+      "types": "./src/core/errors/index.ts",
+      "default": "./src/core/errors/index.ts"
+    },
+    "./errors": {
+      "types": "./src/core/errors/index.ts",
+      "default": "./src/core/errors/index.ts"
+    },
+    "./fn": {
+      "types": "./src/core/fn/index.ts",
+      "default": "./src/core/fn/index.ts"
+    },
+    "./logger": {
+      "types": "./src/core/logger/index.ts",
+      "default": "./src/core/logger/index.ts"
+    },
+    "./telemetry": {
+      "types": "./src/core/telemetry/index.ts",
+      "default": "./src/core/telemetry/index.ts"
+    },
+    "./http": {
+      "types": "./src/core/http/index.ts",
+      "default": "./src/core/http/index.ts"
+    },
+    "./object-store": {
+      "types": "./src/core/object-store/index.ts",
+      "default": "./src/core/object-store/index.ts"
+    },
+    "./openapi": {
+      "types": "./src/core/openapi/index.ts",
+      "default": "./src/core/openapi/index.ts"
+    },
+    "./server": {
+      "types": "./src/server/index.ts",
+      "default": "./src/server/index.ts"
+    },
+    "./durable-object": {
+      "types": "./src/server/durable-object/index.ts",
+      "default": "./src/server/durable-object/index.ts"
+    },
+    "./routes": {
+      "types": "./src/server/routes/index.ts",
+      "default": "./src/server/routes/index.ts"
+    },
+    "./rpc": {
+      "types": "./src/server/rpc/index.ts",
+      "default": "./src/server/rpc/index.ts"
+    },
+    "./worker": {
+      "types": "./src/server/durable-object/index.ts",
+      "default": "./src/server/durable-object/index.ts"
+    },
+    "./cli": {
+      "types": "./src/cli/index.ts",
+      "default": "./src/cli/index.ts"
+    },
+    "./cli/errors": {
+      "types": "./src/cli/errors/index.ts",
+      "default": "./src/cli/errors/index.ts"
+    },
+    "./cli/manifest": {
+      "types": "./src/cli/manifest/index.ts",
+      "default": "./src/cli/manifest/index.ts"
+    },
+    "./cli/fs": {
+      "types": "./src/cli/fs/index.ts",
+      "default": "./src/cli/fs/index.ts"
+    },
+    "./cli/process": {
+      "types": "./src/cli/process/index.ts",
+      "default": "./src/cli/process/index.ts"
+    },
+    "./cli/runtime": {
+      "types": "./src/cli/runtime/index.ts",
+      "default": "./src/cli/runtime/index.ts"
+    },
+    "./tui": {
+      "types": "./src/cli/tui/index.ts",
+      "default": "./src/cli/tui/index.ts"
+    },
+    "./agent/telemetry": {
+      "types": "./src/server/agent/telemetry/index.ts",
+      "default": "./src/server/agent/telemetry/index.ts"
+    },
+    "./agent": {
+      "types": "./src/server/agent/index.ts",
+      "default": "./src/server/agent/index.ts"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
+    },
+    "./testing/durable-object": {
+      "types": "./src/testing/durable-object/index.ts",
+      "default": "./src/testing/durable-object/index.ts"
+    },
+    "./testing/agent": {
+      "types": "./src/testing/agent/index.ts",
+      "default": "./src/testing/agent/index.ts"
+    },
+    "./testing/cloudflare-workers": {
+      "types": "./src/testing/workers-stub/cloudflare-workers.ts",
+      "default": "./src/testing/workers-stub/cloudflare-workers.ts"
+    },
+    "./testing/bun-preload": {
+      "types": "./src/testing/workers-stub/bun-preload.ts",
+      "default": "./src/testing/workers-stub/bun-preload.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && bun run typecheck:consumers",
+    "typecheck:consumers": "bun check -p test/consumers/pure && bun check -p test/consumers/worker && bun check -p test/consumers/testing && bun check -p test/consumers/testing-do && bun check -p test/consumers/cli && bun run typecheck:docs",
+    "typecheck:docs": "bun test/consumers/docs/extract.ts && bun check -p test/consumers/docs",
+    "test": "vitest run",
+    "lint": "tsc --noEmit && ast-grep scan && ast-grep test --skip-snapshot-tests"
+  },
+  "dependencies": {
+    "effect": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
+    "@earendil-works/pi-telemetry": "1.4.0",
+    "agents": "0.30.1"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/chord": {
+      "optional": true
+    },
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-durable": {
+      "optional": true
+    },
+    "@earendil-works/pi-telemetry": {
+      "optional": true
+    },
+    "agents": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260329.0",
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
+    "@earendil-works/pi-telemetry": "1.4.0",
+    "@total-typescript/ts-reset": "0.6.1",
+    "@types/node": "^22.13.0",
+    "agents": "0.30.1",
+    "esbuild": "0.28.2",
+    "fast-check": "^3.23.2",
+    "miniflare": "^4.20260730.0",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.12",
+    "zod": "3.25.76"
+  }
+}

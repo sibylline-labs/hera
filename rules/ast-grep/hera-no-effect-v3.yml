@@ -1,0 +1,42 @@
+id: hera-no-effect-v3
+language: TypeScript
+severity: error
+message: >-
+  Effect v3 APIs are banned in Hera. Use Effect v4 LTS and Hera
+  idioms instead: Context.Service<Self, Shape>()("id") instead of Context.GenericTag /
+  Effect.Tag / Effect.Service; HeraError.define("Tag", { code, fields }) instead of
+  Schema.TaggedError / Data.TaggedError; Effect.provide(Service.layer(...)) instead of
+  Effect.provideService; Effect.catch / Effect.catchTag / Effect.catchTags instead of
+  Effect.catchAll; Layer.effect / Layer.scoped instead of Layer.effectContext; and
+  import * as Schema from "effect/Schema" with Schema.Struct instead of "@effect/schema"
+  or lowercase Schema.struct.
+files:
+  - "src/**/*.ts"
+  - "test/**/*.ts"
+  - "apps/**/*.ts"
+  - "packages/**/*.ts"
+ignores:
+  - "src/core/errors/**"
+  - "src/core/http/**"
+  - "src/core/schema/**"
+  - "src/cli/**"
+rule:
+  any:
+    - pattern: Context.GenericTag($$$)
+    - pattern: Context.GenericTag<$T>($$$)
+    - pattern: Context.Tag($$$)
+    - pattern: Effect.Tag($$$)
+    - pattern: Effect.Service($$$)
+    - pattern: Effect.provideService($$$)
+    - pattern: Effect.provideServiceEffect($$$)
+    - pattern: Effect.catchAll($$$)
+    - pattern: Effect.catchAllCause($$$)
+    - pattern: Layer.effectContext($$$)
+    - pattern: Layer.scopedContext($$$)
+    - pattern: Schema.struct($$$)
+    - pattern: Schema.TaggedError($$$)
+    - pattern: Schema.TaggedError<$T>()($$$)
+    - pattern: Schema.TaggedError<$T>($$$)
+    - pattern: Data.TaggedError($$$)
+    - pattern: import $$$ from "@effect/schema"
+    - pattern: import * as $NS from "@effect/schema"

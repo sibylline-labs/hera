@@ -1,0 +1,74 @@
+name: ci
+
+# The gate a consumer's pinned SHA rests on: a consumer installs hera as a git dep at a
+# commit, so that commit must have passed typecheck, lint, tests and the secret scan here.
+#
+# The same workflow ships in the public repo. A private repo runs on the org's self-hosted
+# runners; a public repo (and every fork of it) runs on GitHub-hosted ones, so a fork's pull
+# request never reaches a self-hosted machine.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ github.event.repository.private && 'sib-8vcpu' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+      # `bun run lint` and test/skill-and-rules.test.ts run `ast-grep scan` and `ast-grep test`
+      # over the ruleset; the same pinned build and checksum as the org lint gate.
+      - name: Install ast-grep
+        env:
+          AST_GREP_VERSION: 0.50.0
+          AST_GREP_CHECKSUM: 0fd3f489639abb8465a914b74b8779171577582318d8a940d00399f59dba81c5
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "${RUNNER_TEMP}/ast-grep.zip" \
+            "https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-x86_64-unknown-linux-gnu.zip"
+          echo "${AST_GREP_CHECKSUM}  ${RUNNER_TEMP}/ast-grep.zip" | sha256sum -c -
+          unzip -q -d "${RUNNER_TEMP}" "${RUNNER_TEMP}/ast-grep.zip" ast-grep
+          sudo install -m 0755 "${RUNNER_TEMP}/ast-grep" /usr/local/bin/ast-grep
+          ast-grep --version
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test
+
+  # The tree `git archive` ships (.gitattributes `export-ignore` applied), scanned with the
+  # default gitleaks rules; .gitleaks.toml allowlists each test fixture by its exact value.
+  secrets:
+    runs-on: ${{ github.event.repository.private && 'sib-8vcpu' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_CHECKSUM: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_CHECKSUM}  ${RUNNER_TEMP}/${archive}" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" gitleaks
+          sudo install -m 0755 "${RUNNER_TEMP}/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan the archived tree
+        run: |
+          set -euo pipefail
+          tree="${RUNNER_TEMP}/tree"
+          mkdir -p "${tree}"
+          git archive HEAD | tar -x -C "${tree}"
+          gitleaks dir "${tree}" --config .gitleaks.toml --redact --no-banner

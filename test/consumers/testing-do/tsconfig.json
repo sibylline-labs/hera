@@ -1,0 +1,9 @@
+{
+  // A consumer's app test shape for `/testing/durable-object`: workers-types plus node (the in-memory
+  // SQLite DO harness loads `node:sqlite` through `node:module`), ts-reset loaded.
+  "extends": "../pure/tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": ["*.ts"]
+}

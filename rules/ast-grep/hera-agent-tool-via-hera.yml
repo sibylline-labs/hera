@@ -1,0 +1,138 @@
+id: hera-agent-tool-via-hera
+language: TypeScript
+severity: error
+message: >-
+  Build agent tools with Hera.agentTool({ name, description, input: <Effect Schema>, execute })
+  from @sibylline-labs/hera/agent, never as a raw Pi Durable tool registration. Hera.agentTool
+  decodes the model's raw arguments strictly before Pi coerces them, defaults replay to "safe" and
+  hands the handler its callId.
+note: >-
+  Flags Pi's tool-building surface outside the agent plane: the ToolRegistration type in any
+  position, imports of tool builders and registries from @earendil-works/pi-durable (any subpath,
+  namespace imports included), re-exports of that module, calls to defineTool, defineExtension,
+  wrapTool or toolExtension, and object literals pairing a non-array `parameters` with an
+  `execute`. Object.assign and computed keys are not caught; the type rung (HeraAgentTool is
+  branded) holds those.
+files:
+  - "src/**/*.ts"
+  - "test/workerd/fixture/**/*.ts"
+ignores:
+  - "src/server/agent/**"
+  - "src/testing/agent/**"
+utils:
+  pi-durable-source:
+    kind: string
+    regex: ^["']@earendil-works/pi-durable(/[^"']*)?["']$
+rule:
+  any:
+    # ToolRegistration in any type position: annotations, generics, satisfies, as, implements
+    # (not the name of an unrelated local interface or type alias declaring its own).
+    - kind: type_identifier
+      regex: ^ToolRegistration$
+      not:
+        any:
+          - inside:
+              kind: interface_declaration
+              field: name
+          - inside:
+              kind: type_alias_declaration
+              field: name
+    # Pi.ToolRegistration through a namespace import.
+    - kind: nested_type_identifier
+      regex: \.ToolRegistration$
+    # import { ToolRegistration | defineTool | createRegistry | create*Tool ... } from pi-durable.
+    - kind: import_specifier
+      has:
+        field: name
+        regex: ^(ToolRegistration|defineTool|defineExtension|wrapTool|toolExtension|createRegistry|create\w*(Tool|Tools|Extension))$
+      inside:
+        kind: import_statement
+        stopBy: end
+        has:
+          field: source
+          matches: pi-durable-source
+    # import * as Pi / import piDurable from pi-durable.
+    - kind: identifier
+      inside:
+        kind: import_clause
+        inside:
+          kind: import_statement
+          has:
+            field: source
+            matches: pi-durable-source
+    # await import("@earendil-works/pi-durable") with a literal specifier.
+    - kind: call_expression
+      all:
+        - has:
+            field: function
+            kind: import
+        - has:
+            field: arguments
+            has:
+              matches: pi-durable-source
+    - kind: namespace_import
+      inside:
+        kind: import_statement
+        stopBy: end
+        has:
+          field: source
+          matches: pi-durable-source
+    # export { ... } from / export * from pi-durable.
+    - kind: export_statement
+      has:
+        field: source
+        matches: pi-durable-source
+    # defineTool(...), Pi.defineExtension(...), wrapTool(...), toolExtension(...).
+    - kind: call_expression
+      has:
+        field: function
+        regex: (^|\.)(defineTool|defineExtension|wrapTool|toolExtension)$
+    # A Pi-shaped literal: name + description + a non-array `parameters` + `execute`, unless it is
+    # the direct argument of Hera.agentTool (a nested literal inside one is still flagged).
+    - kind: object
+      all:
+        - any:
+            - has:
+                kind: pair
+                all:
+                  - has:
+                      field: key
+                      regex: ^["']?parameters["']?$
+                  - not:
+                      has:
+                        field: value
+                        kind: array
+            - has:
+                kind: shorthand_property_identifier
+                regex: ^parameters$
+        - any:
+            - has:
+                kind: method_definition
+                has:
+                  field: name
+                  regex: ^["']?execute["']?$
+            - has:
+                kind: pair
+                has:
+                  field: key
+                  regex: ^["']?execute["']?$
+            - has:
+                kind: shorthand_property_identifier
+                regex: ^execute$
+        - any:
+            - has:
+                kind: pair
+                has:
+                  field: key
+                  regex: ^["']?(description|name)["']?$
+            - has:
+                kind: shorthand_property_identifier
+                regex: ^(description|name)$
+      not:
+        inside:
+          kind: arguments
+          inside:
+            kind: call_expression
+            has:
+              field: function
+              regex: (^|\.)agentTool$

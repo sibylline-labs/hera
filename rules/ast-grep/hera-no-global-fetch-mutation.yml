@@ -1,0 +1,56 @@
+id: hera-no-global-fetch-mutation
+language: TypeScript
+severity: error
+message: >-
+  Do not replace the global fetch (globalThis/global/window/self). A patched global leaks into
+  every request the process makes and races concurrent calls. To add to an outbound payload or
+  read a receipt, thread the value through a hook point the owning verb declares
+  (HeraCli.hookPoint + HeraCli.hook, registered with HeraCli.on); to stub HTTP in a test, use the
+  HeraHttp test seam or vi.stubGlobal.
+files:
+  - "src/**/*.ts"
+  - "apps/**/*.ts"
+  - "packages/**/*.ts"
+  - "plugins/**/*.ts"
+ignores:
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+utils:
+  global-object:
+    kind: identifier
+    regex: "^(globalThis|global|window|self)$"
+  fetch-target:
+    any:
+      - kind: member_expression
+        all:
+          - has: { field: object, matches: global-object }
+          - has: { field: property, regex: "^fetch$" }
+      - kind: subscript_expression
+        all:
+          - has: { field: object, matches: global-object }
+          - has: { field: index, regex: "^[\"'`]fetch[\"'`]$" }
+rule:
+  any:
+    - kind: assignment_expression
+      has: { field: left, matches: fetch-target }
+    - kind: augmented_assignment_expression
+      has: { field: left, matches: fetch-target }
+    - pattern: Object.assign($G, $$$REST)
+      has:
+        field: arguments
+        all:
+          - has: { nthChild: 1, matches: global-object }
+          - has:
+              kind: object
+              has:
+                any:
+                  - kind: pair
+                    has: { field: key, regex: "^[\"']?fetch[\"']?$" }
+                  - kind: shorthand_property_identifier
+                    regex: "^fetch$"
+    - pattern: Object.defineProperty($G, $KEY, $$$REST)
+      all:
+        - has: { field: arguments, has: { nthChild: 1, matches: global-object } }
+        - has: { field: arguments, has: { nthChild: 2, regex: "^[\"'`]fetch[\"'`]$" } }

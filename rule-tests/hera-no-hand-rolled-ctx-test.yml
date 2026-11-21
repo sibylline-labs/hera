@@ -1,0 +1,34 @@
+id: hera-no-hand-rolled-ctx
+valid:
+  - |
+    import { Hera, HeraTenantCtx } from "@sibylline-labs/hera";
+    import { HeraTest } from "@sibylline-labs/hera/testing";
+
+    export const auditAction = Hera.fn("AuditService.auditAction")(function* () {
+      const ctx = yield* HeraTenantCtx;
+      yield* ctx.logger.info("audit.recorded", { actorId: ctx.actorId });
+      return ctx.requestId;
+    });
+
+    const testLayer = HeraTest.layer({
+      orgId: "org_acme",
+      actorId: "usr_alice",
+      scopes: ["orders:write"],
+    });
+invalid:
+  - |
+    export function getReqId(request: Request) {
+      return request.headers.get("X-Request-Id") ?? "unknown";
+    }
+  - |
+    export function getBearer(headers: Headers) {
+      return headers.get("Authorization");
+    }
+  - |
+    export function logManual(msg: string) {
+      console.log(JSON.stringify({ level: "info", msg }));
+    }
+  - |
+    import { Layer } from "effect";
+    import { HeraTenantCtx } from "@sibylline-labs/hera";
+    const badLayer = Layer.succeed(HeraTenantCtx, fakeCtx);

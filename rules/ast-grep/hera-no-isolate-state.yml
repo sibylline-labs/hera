@@ -1,0 +1,43 @@
+id: hera-no-isolate-state
+language: TypeScript
+severity: error
+message: >-
+  No mutable module state in the core plane. A Worker or Durable Object isolate is
+  shared by every request and tenant, so a module-scope `let`, `var`, or an empty `Map`/`Set`
+  accumulator carries one caller's state into another. Hold the state in the object a factory
+  returns (as HeraCache.make and HeraFlags.ofrep do).
+note: >-
+  A seeded constant lookup (`new Set(["a", "b"])`) is allowed; an argument-less `new Map()` /
+  `new Set()` / `new WeakMap()` / `new WeakSet()` at module scope is an accumulator and is not.
+files:
+  - "src/core/**/*.ts"
+rule:
+  any:
+    - all:
+        - kind: lexical_declaration
+        - regex: ^let\s
+        - any:
+            - inside: { kind: program }
+            - inside: { kind: export_statement, inside: { kind: program } }
+    - all:
+        - kind: variable_declaration
+        - any:
+            - inside: { kind: program }
+            - inside: { kind: export_statement, inside: { kind: program } }
+    - all:
+        - kind: lexical_declaration
+        - any:
+            - inside: { kind: program }
+            - inside: { kind: export_statement, inside: { kind: program } }
+        - has:
+            kind: variable_declarator
+            has:
+              field: value
+              kind: new_expression
+              all:
+                - has:
+                    field: constructor
+                    regex: '^(Map|Set|WeakMap|WeakSet)$'
+                - has:
+                    field: arguments
+                    regex: '^\(\s*\)$'

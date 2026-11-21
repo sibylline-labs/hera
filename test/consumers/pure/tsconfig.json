@@ -1,0 +1,16 @@
+{
+  // A consumer's `packages/core` shape: consumer-default strict flags, no ambient runtime types,
+  // ts-reset loaded. Every subpath imported here must typecheck without workers-types or node.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noImplicitOverride": true,
+    "types": []
+  },
+  "include": ["*.ts"]
+}

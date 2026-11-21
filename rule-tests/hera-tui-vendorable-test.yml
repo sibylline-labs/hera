@@ -1,0 +1,34 @@
+id: hera-tui-vendorable
+valid:
+  - |
+    import { run } from "./flow.js";
+  - |
+    export * from "./steps.js";
+  - |
+    export type { TuiIo } from "./types.js";
+  - |
+    import type { TuiStep } from "./types.js";
+    const decoder = new TextDecoder();
+  - |
+    const label = "../not-an-import";
+  - |
+    export const hint = "../effect";
+invalid:
+  - |
+    import { Effect } from "effect";
+  - |
+    import * as fs from "node:fs";
+  - |
+    import { HeraCli } from "../hera-cli.js";
+  - |
+    import type { Foo } from "../../core/schema/index.js";
+  - |
+    export { scrubFreeText } from "../errors/index.js";
+  - |
+    export * from "effect/Schema";
+  - |
+    const readline = await import("node:readline");
+  - |
+    const tty = require("node:tty");
+  - |
+    import "./sub/x.js";

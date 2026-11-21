@@ -1,0 +1,6 @@
+{
+  // Doc examples compile in the Worker test shape (workers-types + node) so every subpath is in
+  // reach; `extract.ts` writes them to `snippets/`.
+  "extends": "../testing-do/tsconfig.json",
+  "include": ["snippets/*.ts"]
+}

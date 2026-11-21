@@ -1,0 +1,25 @@
+id: hera-tui-lazy
+valid:
+  - |
+    import { verb } from "./runtime/index.js";
+  - |
+    const s = "tui/x";
+  - |
+    export const path = "./tui/index.js";
+  - |
+    import { tuiish } from "./tuition.js";
+  - |
+    export * from "./errors/index.js";
+invalid:
+  - |
+    import { HeraTui } from "./tui/index.js";
+  - |
+    export * from "./tui/index.js";
+  - |
+    export { HeraTui } from "../cli/tui/index.js";
+  - |
+    const t = await import("./tui/index.js");
+  - |
+    import type { TuiIo } from "./tui/types.js";
+  - |
+    const t = require("../tui/flow.js");

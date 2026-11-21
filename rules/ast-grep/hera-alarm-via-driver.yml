@@ -1,0 +1,44 @@
+id: hera-alarm-via-driver
+language: TypeScript
+severity: error
+message: >-
+  Do not touch the Durable Object platform alarm (setAlarm, getAlarm, deleteAlarm) directly.
+  Read, arm and clear it through the object's AlarmDriver (src/server/durable-object/alarm-driver.ts),
+  so a host that hands the alarm to another owner (a Lifecycle host job) receives every arm.
+note: >-
+  Matches the method names in any literal spelling: member access, string or template subscripts,
+  destructuring patterns and exact string literals. A key built at runtime is not caught.
+files:
+  - "src/**/*.ts"
+ignores:
+  - "src/server/durable-object/alarm-driver.ts"
+  - "src/testing/**"
+rule:
+  any:
+    # property access: x.setAlarm / x?.setAlarm / x.setAlarm.bind / (x as any).setAlarm
+    - kind: member_expression
+      has:
+        field: property
+        kind: property_identifier
+        regex: ^(setAlarm|getAlarm|deleteAlarm)$
+    # element access with a literal / template key
+    - kind: subscript_expression
+      has:
+        field: index
+        regex: ^["'`](setAlarm|getAlarm|deleteAlarm)["'`]$
+    # destructuring keys: { setAlarm }, { setAlarm: arm }, { setAlarm = d }
+    - kind: shorthand_property_identifier_pattern
+      regex: ^(setAlarm|getAlarm|deleteAlarm)$
+    - kind: pair_pattern
+      has:
+        field: key
+        regex: ^["'`]?(setAlarm|getAlarm|deleteAlarm)["'`]?$
+    - kind: object_assignment_pattern
+      has:
+        kind: shorthand_property_identifier_pattern
+        regex: ^(setAlarm|getAlarm|deleteAlarm)$
+    # exact string-literal use (Reflect.get(s,"setAlarm"), const k = "setAlarm", "setAlarm" in s)
+    - kind: string
+      regex: ^["'](setAlarm|getAlarm|deleteAlarm)["']$
+    - kind: template_string
+      regex: ^`(setAlarm|getAlarm|deleteAlarm)`$

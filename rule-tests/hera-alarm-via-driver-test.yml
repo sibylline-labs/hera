@@ -1,0 +1,55 @@
+id: hera-alarm-via-driver
+valid:
+  - |
+    interface StorageLike { setAlarm(at: number): Promise<void> }
+  - |
+    const harness = { setAlarmCalls: [] as number[] }
+    harness.setAlarmCalls.push(1)
+  - |
+    await lifecycle.rearmAlarm()
+    await lifecycle.disableAlarms()
+  - |
+    // setAlarm is clamped to now + 1
+    logger.error("Platform setAlarm failed")
+  - |
+    await this.alarmDriver.set(at)
+    await this.alarmDriver.get()
+    await this.alarmDriver.clear()
+invalid:
+  - |
+    await this.ctx.storage.setAlarm(t)
+  - |
+    const { setAlarm } = ctx.storage
+  - |
+    await ctx.storage["deleteAlarm"]()
+  - |
+    const at = await storage.getAlarm()
+  - |
+    deps.storage.setAlarm(x)
+  - |
+    storage?.setAlarm(t)
+  - |
+    const { setAlarm: arm } = storage
+  - |
+    const arm = storage.setAlarm.bind(storage)
+  - |
+    storage[`setAlarm`](t)
+  - |
+    Promise.resolve(storage.setAlarm(x)).catch(onArmFailure)
+  - |
+    const arm = Reflect.get(storage, "setAlarm")
+  - |
+    const k = "setAlarm"
+    storage[k](t)
+  - |
+    function arm({ storage: { setAlarm } }: { storage: DurableObjectStorage }) {}
+  - |
+    await storage.transaction(async (txn) => txn.deleteAlarm())
+  - |
+    const f = storage.setAlarm
+  - |
+    if ("setAlarm" in storage) {}
+  - |
+    (storage as any).setAlarm!(t)
+  - |
+    const { getAlarm = fallback } = storage

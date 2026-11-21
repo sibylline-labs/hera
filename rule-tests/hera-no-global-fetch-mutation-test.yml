@@ -1,0 +1,48 @@
+id: hera-no-global-fetch-mutation
+valid:
+  - |
+    const f = globalThis.fetch;
+  - |
+    await globalThis.fetch(url);
+  - |
+    let fetch = f; fetch = g;
+  - |
+    client.fetch = f;
+  - |
+    if (globalThis.fetch === f) {}
+  - |
+    Object.assign(globalThis, { other: 1 });
+  - |
+    Object.assign(target, { fetch: f });
+  - |
+    Object.defineProperty(globalThis, "other", { value: f });
+  - |
+    const o = { fetch: f };
+invalid:
+  - |
+    globalThis.fetch = f;
+  - |
+    global.fetch = f;
+  - |
+    window.fetch = f;
+  - |
+    self.fetch = f;
+  - |
+    globalThis["fetch"] = f;
+  - |
+    globalThis.fetch ||= f;
+  - |
+    Object.assign(globalThis, { fetch: f });
+  - |
+    Object.assign(globalThis, { fetch });
+  - |
+    Object.defineProperty(globalThis, "fetch", { value: f });
+  - |
+    function submit() {
+      globalThis.fetch = wrappedFetch;
+      try {
+        run();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }

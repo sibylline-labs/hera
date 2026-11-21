@@ -1,0 +1,36 @@
+id: hera-no-raw-effect-run
+valid:
+  - |
+    import { Hera } from "@sibylline-labs/hera";
+    export const getUser = Hera.fn("UserService.getUser")(function* (id: string) {
+      return { id };
+    });
+  - |
+    import { Hera } from "@sibylline-labs/hera";
+    export const route = Hera.publicRoute({
+      method: "GET",
+      path: "/v1/health",
+      output: HealthSchema,
+      handler: () => getHealth(),
+    });
+invalid:
+  - |
+    import { Effect } from "effect";
+    export async function handle(req: Request) {
+      return await Effect.runPromise(Effect.succeed({ ok: true }));
+    }
+  - |
+    import { Effect } from "effect";
+    export function syncHandler() {
+      return Effect.runSync(Effect.succeed(42));
+    }
+  - |
+    import { Effect } from "effect";
+    export function forkBg() {
+      return Effect.runFork(Effect.succeed("bg"));
+    }
+  - |
+    import { Effect } from "effect";
+    export async function exitHandler() {
+      return await Effect.runPromiseExit(Effect.succeed("done"));
+    }

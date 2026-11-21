@@ -1,0 +1,8 @@
+# gitleaks config for the public tree (`git archive HEAD`), run by the CI `secrets` job and
+# scripts/public-cut.sh. Default rules and no allowlist: every scanner-shaped test fixture is
+# assembled at run time (test/fixtures/provider-tokens.ts and the join sites), so no source line
+# holds a whole token. A finding is a real leak or a new literal fixture; fix the literal, do not
+# add an allowlist entry.
+
+[extend]
+useDefault = true

@@ -1,0 +1,9 @@
+{
+  // eris shape: a Bun/Node CLI with the DOM lib and no workers-types.
+  "extends": "../pure/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["*.ts"]
+}

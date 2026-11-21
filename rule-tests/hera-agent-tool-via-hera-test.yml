@@ -1,0 +1,130 @@
+id: hera-agent-tool-via-hera
+valid:
+  # 12: the sanctioned path
+  - |
+    const lookup = Hera.agentTool({ name: "lookup", description: "d", input: Lookup, execute: ({ key }) => Effect.succeed(key) })
+  # R11: a misnamed field inside Hera.agentTool is the type checker's to refuse, not this rule's
+  - |
+    Hera.agentTool({ name: "x", description: "d", parameters: P, execute: () => Effect.succeed("") })
+  # 13: Hera's own branded type
+  - |
+    export type Tools = ReadonlyArray<HeraAgentTool>
+  # 14: an execute with no parameters
+  - |
+    const job = { execute: () => run() }
+  # 15: a parameters object with no execute
+  - |
+    const schema = { parameters: { type: "object" } }
+  # R10: an OpenAPI operation: `parameters` is an array
+  - |
+    const op = { parameters: [{ in: "query", name: "q" }], execute: handler }
+  # 16: comments and strings
+  - |
+    // not a ToolRegistration
+    logger.info("ToolRegistration is built by Hera")
+  # other pi-durable imports are not tool builders
+  - |
+    import { Harness, MemoryStorage } from "@earendil-works/pi-durable"
+  # a createRegistry from another package
+  - |
+    import { createRegistry } from "prom-client"
+  # a .install call with no Pi import
+  - |
+    await bun.install({ cwd })
+  # verifier FP: an SQL statement object (no name/description)
+  - |
+    const stmt = { sql: "SELECT 1", parameters: { id: 1 }, execute: () => db.run() }
+  # verifier FP: an unrelated local interface declaring its own name
+  - |
+    interface ToolRegistration { readonly id: string }
+invalid:
+  # 1
+  - |
+    const t: ToolRegistration = { name: "x", description: "d", parameters: P, execute: f }
+  # 2
+  - |
+    function lookupTool(): ToolRegistration<typeof Args> { return make() }
+  # 3
+  - |
+    const t = make() satisfies ToolRegistration
+  # 4
+  - |
+    const t = make() as ToolRegistration
+  # 5
+  - |
+    import { type ToolRegistration } from "@earendil-works/pi-durable"
+  # 6
+  - |
+    import { ToolRegistration as TR } from "@earendil-works/pi-durable"
+  # 7
+  - |
+    const t = defineTool({ name: "x", description: "d", parameters: P, execute: f })
+  # 8
+  - |
+    const t = { name: "x", parameters: Type.Object({}), async execute(args, api) { return { output: [] } } }
+  # 9
+  - |
+    const t = { name: "x", parameters: P, execute: async () => ({ output: [] }) }
+  # 10 / R2
+  - |
+    import { createRegistry } from "@earendil-works/pi-durable"
+  # 11
+  - |
+    registry.install({ name: "x", tools: [{ name: "y", parameters: P, execute: f }] })
+  # R1
+  - |
+    const ext = defineExtension({ name: "x", tools: [t] })
+  # R3
+  - |
+    const wrapped = wrapTool(base, (next) => next)
+  # R3
+  - |
+    const ext = toolExtension(t)
+  # R4
+  - |
+    import { createBashTool } from "@earendil-works/pi-durable/tools"
+  # R4
+  - |
+    import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search"
+  # R5
+  - |
+    import type * as Pi from "@earendil-works/pi-durable"
+  # R5
+  - |
+    const t: Pi.ToolRegistration = make()
+  # R5
+  - |
+    const t = Pi.defineTool({ name: "x", description: "d", parameters: P, execute: f })
+  # R6
+  - |
+    export { type ToolRegistration } from "@earendil-works/pi-durable"
+  # R6
+  - |
+    export * from "@earendil-works/pi-durable"
+  # R7
+  - |
+    import { createCodemodeTool } from "@earendil-works/pi-durable/codemode"
+  # R8
+  - |
+    function mk<T extends ToolRegistration>(t: T): T { return t }
+  # R8
+  - |
+    class Lookup implements ToolRegistration { name = "x" }
+  # R9
+  - |
+    const t = { "name": "x", "parameters": P, "execute": f }
+  # verifier: dynamic import with a literal specifier
+  - |
+    const { createRegistry } = await import("@earendil-works/pi-durable")
+  # verifier: default import
+  - |
+    import piDurable from "@earendil-works/pi-durable"
+  # verifier: shorthand properties
+  - |
+    const t3 = { name: "y", description: "d", parameters, execute }
+  # verifier: a raw tool nested inside an agentTool call is not exempt
+  - |
+    Hera.agentTool({ name: "x", description: "d", input: I, execute: () => Effect.sync(() => registry.install({ tools: [{ name: "raw", description: "d", parameters: P, execute: f }] })) })
+  # verifier: an unanchored name ending in agentTool is not exempt
+  - |
+    myFakeagentTool({ name: "z", description: "d", parameters: P, execute: f })

@@ -1,0 +1,41 @@
+id: hera-no-hand-rolled-ctx
+language: TypeScript
+severity: error
+message: >-
+  Do not hand-roll X-Request-Id / Authorization header extraction, manual
+  console.log(JSON.stringify({ level, ... })) structured logging, or raw
+  Layer.succeed(HeraCtx, ...) mocks. Use HeraPublicCtx / HeraAuthedCtx /
+  HeraTenantCtx, ctx.logger, and HeraTest.layer({ orgId, actorId, scopes }) from
+  @sibylline-labs/hera/testing.
+files:
+  - "src/**/*.ts"
+  - "test/**/*.ts"
+  - "apps/**/*.ts"
+  - "packages/**/*.ts"
+ignores:
+  - "src/core/context/**"
+  - "src/core/logger/**"
+  - "src/server/routes/**"
+  - "src/testing/**"
+rule:
+  any:
+    - all:
+        - any:
+            - pattern: $HEADERS.get("x-request-id")
+            - pattern: $HEADERS.get("X-Request-Id")
+            - pattern: $HEADERS.get("X-Request-ID")
+            - pattern: $HEADERS.get("authorization")
+            - pattern: $HEADERS.get("Authorization")
+            - pattern: $HEADERS.get("x-hera-org-id")
+            - pattern: $HEADERS.get("x-hera-actor-id")
+        - not:
+            inside:
+              pattern: expect($$$)
+              stopBy: end
+    - pattern: 'console.$METHOD(JSON.stringify({ level: $LVL, $$$ }))'
+    - pattern: 'console.$METHOD(JSON.stringify({ $$$, level: $LVL }))'
+    - pattern: 'console.$METHOD(JSON.stringify({ msg: $MSG, $$$ }))'
+    - pattern: Layer.succeed(HeraCtx, $$$)
+    - pattern: Layer.succeed(HeraTenantCtx, $$$)
+    - pattern: Layer.succeed(HeraAuthedCtx, $$$)
+    - pattern: Layer.succeed(HeraPublicCtx, $$$)

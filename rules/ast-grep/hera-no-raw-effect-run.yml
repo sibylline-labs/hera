@@ -1,0 +1,37 @@
+id: hera-no-raw-effect-run
+language: TypeScript
+severity: error
+message: >-
+  Do not call raw Effect runners (Effect.runPromise, Effect.runSync, Effect.runFork,
+  Effect.runCallback, Effect.runPromiseExit, Effect.runSyncExit) in application code.
+  Declare handlers with Hera.publicRoute, Hera.authedRoute, Hera.rpcMethod, Hera.queueConsumer,
+  Hera.TenantDurableObject, or HeraCli.verb so boundary error/defect mapping,
+  request_id correlation, and structured logging are enforced automatically.
+files:
+  - "src/**/*.ts"
+  - "apps/**/*.ts"
+  - "packages/**/*.ts"
+ignores:
+  - "**/test/**"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "src/server/routes/**"
+  - "src/server/rpc/**"
+  - "src/server/durable-object/**"
+  - "src/server/queue/**"
+  - "src/cli/**"
+  # `waitUntil` takes a Promise: the OTLP POST and the Worker guard are Promise boundaries.
+  - "src/core/telemetry/export.ts"
+  - "src/server/worker/**"
+  # The agent plane's Promise boundaries: Pi's tool `execute` and the host's Lifecycle doors.
+  - "src/server/agent/tool/registration.ts"
+  - "src/server/agent/host/**"
+  - "src/testing/**"
+rule:
+  any:
+    - pattern: Effect.runPromise($$$)
+    - pattern: Effect.runSync($$$)
+    - pattern: Effect.runFork($$$)
+    - pattern: Effect.runCallback($$$)
+    - pattern: Effect.runPromiseExit($$$)
+    - pattern: Effect.runSyncExit($$$)

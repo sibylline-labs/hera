@@ -1,0 +1,27 @@
+id: hera-tui-lazy
+language: TypeScript
+severity: error
+message: >-
+  hera/tui is lazy-loaded to fit the CLI's <50ms cold-start budget: no
+  src/ module outside src/cli/tui/ may import or re-export it. Consumers reach it through
+  the @sibylline-labs/hera/tui subpath, with `await import(...)` at the verb that needs it.
+files:
+  - "src/**/*.ts"
+ignores:
+  - "src/cli/tui/**"
+utils:
+  specifier:
+    kind: string
+    any:
+      - inside: { kind: import_statement, field: source }
+      - inside: { kind: export_statement, field: source }
+      - inside:
+          kind: arguments
+          inside:
+            kind: call_expression
+            any:
+              - has: { field: function, kind: import }
+              - has: { field: function, regex: "^require$" }
+rule:
+  matches: specifier
+  regex: "(^[\"']|/)tui/"

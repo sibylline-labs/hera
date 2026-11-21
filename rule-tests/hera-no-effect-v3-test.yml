@@ -1,0 +1,37 @@
+id: hera-no-effect-v3
+valid:
+  - |
+    import { Context, Effect, Layer } from "effect";
+    import * as Schema from "effect/Schema";
+    import { HeraError } from "@sibylline-labs/hera";
+
+    export class BillingService extends Context.Service<
+      BillingService,
+      { readonly charge: (cents: number) => Effect.Effect<void> }
+    >()("app/BillingService") {}
+
+    export class PaymentDeclinedError extends HeraError.define("PaymentDeclinedError", {
+      code: "BILLING_PAYMENT_DECLINED",
+      fields: { reason: Schema.String },
+    }) {}
+
+    export const Payload = Schema.Struct({ id: Schema.String });
+invalid:
+  - |
+    import { Context } from "effect";
+    const Tag = Context.GenericTag<{ readonly run: () => void }>("Tag");
+  - |
+    import { Effect } from "effect";
+    class LegacySvc extends Effect.Tag("LegacySvc")<LegacySvc, { readonly id: string }>() {}
+  - |
+    import { Effect } from "effect";
+    const program = Effect.provideService(myEffect, MyTag, impl);
+  - |
+    import { Effect } from "effect";
+    const handled = Effect.catchAll(myEffect, (err) => Effect.succeed(null));
+  - |
+    import { Schema } from "@effect/schema";
+    const Bad = Schema.struct({ id: Schema.String });
+  - |
+    import { Data } from "effect";
+    class BadErr extends Data.TaggedError("BadErr")<{ readonly msg: string }> {}

@@ -1,0 +1,26 @@
+id: hera-tui-vendorable
+language: TypeScript
+severity: error
+message: >-
+  src/cli/tui/ is vendored flat into public eris, so it may
+  import only its own siblings ("./x.js"): no effect, no node:*, no other Hera plane, no
+  subdirectories. Reach the host through the TuiIo port instead.
+files:
+  - "src/cli/tui/**/*.ts"
+utils:
+  specifier:
+    kind: string
+    any:
+      - inside: { kind: import_statement, field: source }
+      - inside: { kind: export_statement, field: source }
+      - inside:
+          kind: arguments
+          inside:
+            kind: call_expression
+            any:
+              - has: { field: function, kind: import }
+              - has: { field: function, regex: "^require$" }
+rule:
+  matches: specifier
+  not:
+    regex: "^[\"']\\./[^/]+[\"']$"

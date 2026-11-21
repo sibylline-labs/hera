@@ -1,0 +1,33 @@
+id: hera-single-fn-syntax
+valid:
+  - |
+    import { Hera } from "@sibylline-labs/hera";
+    export const createOrder = Hera.fn("OrderService.createOrder")(function* (input: OrderInput) {
+      const ctx = yield* Hera.HeraTenantCtx;
+      yield* ctx.logger.info("order.creating", { orgId: ctx.orgId });
+      return { id: "ord_123", orgId: ctx.orgId, amount: input.amount };
+    });
+invalid:
+  - |
+    import { Effect } from "effect";
+    export const badGen = Effect.gen(function* () {
+      return yield* Effect.succeed(1);
+    });
+  - |
+    import { Effect } from "effect";
+    export const badFn = Effect.fn("Service.op")(function* () {
+      return yield* Effect.succeed(1);
+    });
+  - |
+    import { Effect, pipe } from "effect";
+    export const badPipe = pipe(
+      stepOne(),
+      Effect.flatMap((a) => stepTwo(a)),
+      Effect.flatMap((b) => stepThree(b)),
+    );
+  - |
+    import { Effect } from "effect";
+    export const badMethodPipe = stepOne().pipe(
+      Effect.flatMap((a) => stepTwo(a)),
+      Effect.flatMap((b) => stepThree(b)),
+    );
