@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While
 the version is 0.x, a minor release may break the API.
 
+## [Unreleased]
+
+### Added
+
+- `hasSqlTable` and `hasSqlTableTx` helpers on `@sibylline-labs/hera/durable-object`.
+- `HeraHttp.createOnce`: idempotent create under a client-chosen identifier with read-back disambiguation on failure.
+- `HeraHttp.connectionPages`: paginated GraphQL connection reader with per-page hook, page cap, and missing-cursor refusal.
+- Plain-stub Durable Object doors (`runDoor`, `runDoorSync`, `HeraDurableObjectBase.runDoor`/`runDoorSync`) and `propagatingStub` (`HeraFilledStub`, `givenOptional`) for tracing raw-value DO calls under the caller's W3C `traceparent`.
+- Ordered outbox enqueues (`tx.enqueueOutbox({ ordered: true, ... })`) backed by a persistent per-object SQLite sequence and `HeraOutbox.seedSequenceSql`.
+- `HeraConfig.dials` and `HeraConfig.dialReaders`: JSON-object Logfire managed variable groups merged over code defaults with shared per-`(base, token)` readers.
+- A failed span exports the code-shaped fields of its catalogued error as `error.field.<key>` beside `error.code`.
+- `.github/workflows/release.yml` for OIDC trusted publishing of `@sibylline-labs/hera` to npm with provenance, `ci.yml` `npm-pack` verification, `docs/dev/RELEASING.md`, and the `0.x` stability policy in `README.md`.
+
+### Changed
+
+- `package.json` declares an explicit `files` allowlist (`src`, `docs`, `rules`, `skills`, `LICENSE`, `README.md`, `CHANGELOG.md`) and `publishConfig.access: "public"`, shrinking the published tarball to runtime source, docs, rules, and skills.
+
 ## [0.2.0] - 2026-11-11
 
 The first public release, under the MIT License.

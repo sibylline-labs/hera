@@ -24,4 +24,6 @@ export type {
 export * from "./client.js"
 export * from "./graphql-errors.js"
 export * from "./graphql.js"
+export * from "./create-once.js"
+export * from "./connection-pages.js"
 export * from "./oauth2/index.js"

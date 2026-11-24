@@ -97,6 +97,7 @@ export function beginInvocation(
           errored: failure?.errored ?? false,
           ...(failure?.exception !== undefined ? { exception: failure.exception } : {}),
           ...(failure?.errorCode !== undefined ? { errorCode: failure.errorCode } : {}),
+          ...(failure?.errorFields !== undefined ? { errorFields: failure.errorFields } : {}),
         })
       }
       return span

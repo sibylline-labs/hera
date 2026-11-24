@@ -125,6 +125,7 @@ export interface CapturedSpan {
   readonly errored: boolean
   readonly exception?: DescribedException | undefined
   readonly errorCode?: string | undefined
+  readonly errorFields?: Readonly<Record<string, string | number | boolean>> | undefined
 }
 
 export const DEFAULT_HEAD_RATE = 0.01

@@ -3,6 +3,7 @@ import * as Redacted from "effect/Redacted"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { HeraConfigError } from "../src/core/config/types.js"
 import { HeraError } from "../src/core/errors/index.js"
+import { exportableErrorFields } from "../src/core/telemetry/error-fields.js"
 import { HeraTelemetry } from "../src/core/telemetry/index.js"
 import { attr, logsOf, makeTelemetryHarness, spansOf } from "./telemetry-helpers.js"
 
@@ -216,5 +217,54 @@ describe("export transport", () => {
     expect(attr(resource, "deployment.environment.name")).toBe("test")
     expect(attr(resource, "service.version")).toBe("v1")
     expect(attr(resource, "telemetry.sdk.name")).toBe("@sibylline-labs/hera")
+  })
+  // admits: a failed span that cannot tell a rate limit from a timeout; an upstream's prose in a span attribute
+  test("a catalogued 5xx exports code-shaped fields as error.field.*, never free text", async () => {
+    const h = makeTelemetryHarness()
+    const inv = h.telemetry.begin({ name: "x", source: "external", waitUntil: h.waitUntil })
+    const failed = Effect.fail(
+      HeraError.badGateway("Linear did not complete the request", {
+        code: "linear_unavailable",
+        fields: { reason: "linear_rate_limited", linearStatus: 429, detail: "upstream said slow down", "bad key": "x" },
+      })
+    ).pipe(Effect.withSpan("fails"))
+    await Effect.runPromiseExit(inv.provide(failed))
+    inv.end({ status: 502 })
+    await h.settle()
+    const span = spansOf(h.posts.find((p) => p.path === "/v1/traces"))[0]!
+    expect(attr(span, "error.code")).toBe("linear_unavailable")
+    expect(attr(span, "error.field.reason")).toBe("linear_rate_limited")
+    expect(attr(span, "error.field.linearStatus")).toBe("429")
+    expect(JSON.stringify(h.posts)).not.toContain("slow down")
+    expect(JSON.stringify(h.posts)).not.toContain("bad key")
+  })
+  // admits: a bearer token, JWT, hex digest or opaque id riding a catalogued error's fields into Logfire
+  test("a token-shaped or opaque field value is dropped, a code is kept", async () => {
+    const h = makeTelemetryHarness()
+    const inv = h.telemetry.begin({ name: "x", source: "external", waitUntil: h.waitUntil })
+    const secrets = {
+      bearer: ["Bearer", "abcDEF0123456789"].join(" "),
+      jwt: ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiIxMjMifQ", "c2lnbmF0dXJl"].join("."),
+      hex: "0123456789abcdef".repeat(4),
+      opaque: "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4",
+      prefixed: ["tok", "live", "9f8e7d6c5b4a39281716"].join("_"),
+      uuid: "123e4567-e89b-12d3-a456-426614174000",
+    }
+    const failed = Effect.fail(
+      HeraError.badGateway("x", { code: "linear_unavailable", fields: { ...secrets, reason: "linear_rate_limited" } })
+    ).pipe(Effect.withSpan("fails"))
+    await Effect.runPromiseExit(inv.provide(failed))
+    inv.end({ status: 502 })
+    await h.settle()
+    const span = spansOf(h.posts.find((p) => p.path === "/v1/traces"))[0]!
+    expect(attr(span, "error.field.reason")).toBe("linear_rate_limited")
+    for (const key of Object.keys(secrets)) expect(attr(span, `error.field.${key}`)).toBeUndefined()
+    const wire = JSON.stringify(h.posts)
+    for (const value of Object.values(secrets)) expect(wire).not.toContain(value)
+  })
+  // admits: a value a consumer's own secretShapes would redact in logs riding a field into a span
+  test("a field value matching the consumer's secret shapes is dropped", () => {
+    const error = { fields: { reason: "linear_rate_limited", plan: "acmeprivateplan" } }
+    expect(exportableErrorFields(error, { secretShapes: [/acmeprivate/] })).toEqual({ reason: "linear_rate_limited" })
   })
 })

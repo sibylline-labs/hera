@@ -9,6 +9,18 @@
   },
   "type": "module",
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "docs",
+    "rules",
+    "skills",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "exports": {
     ".": {
       "types": "./src/index.ts",

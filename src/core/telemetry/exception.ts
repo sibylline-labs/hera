@@ -3,15 +3,17 @@ import * as Option from "effect/Option"
 import { isAnyHeraError } from "../errors/converters.js"
 import { scrubLogString } from "../logger/redaction.js"
 import { ERROR_MESSAGE_LIMIT, REDACTED_VALUE, type ScrubRules } from "../logger/types.js"
+import { type ErrorFieldValue, exportableErrorFields } from "./error-fields.js"
 import { exceptionFingerprint } from "./fingerprint.js"
 import { frameFunctions, safeErrorName, scrubExceptionStack } from "./stack.js"
 import type { DescribedException } from "./types.js"
 
-/** What a failed span exports: an `exception` (and `errored`) only for a fault, an `errorCode` for a catalogued refusal. */
+/** What a failed span exports: an `exception` (and `errored`) only for a fault, an `errorCode` for a catalogued refusal, and the code-shaped `errorFields` a catalogued error carries. */
 export interface DescribedFailure {
   readonly errored: boolean
   readonly exception?: DescribedException | undefined
   readonly errorCode?: string | undefined
+  readonly errorFields?: Readonly<Record<string, ErrorFieldValue>> | undefined
 }
 
 function stringField(value: object, key: string): string | undefined {
@@ -77,9 +79,13 @@ export function describeFailure(cause: Cause.Cause<unknown>, rules: ScrubRules):
   if (isAnyHeraError(error) && typeof error === "object" && error !== null) {
     const status = numberField(error, "httpStatus") ?? numberField(error, "status") ?? 500
     const code = stringField(error, "code")
+    const errorFields = exportableErrorFields(error, rules)
+    const fields = errorFields !== undefined ? { errorFields } : {}
     if (status < 500) {
-      return { errored: false, ...(code !== undefined ? { errorCode: code } : {}) }
+      return { errored: false, ...(code !== undefined ? { errorCode: code } : {}), ...fields }
     }
+    const exception = describeException(error, rules)
+    return { errored: true, exception, ...(exception.code !== undefined ? { errorCode: exception.code } : {}), ...fields }
   }
   const exception = describeException(error, rules)
   return { errored: true, exception, ...(exception.code !== undefined ? { errorCode: exception.code } : {}) }

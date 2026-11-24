@@ -90,7 +90,7 @@ const bareStub = getTenantStub(env.Org, bareOrg, { useOrgPrefix: true });
 
 ## 2. Subclassing `TenantDurableObject` & Synchronous `SyncTx`
 
-Subclass `TenantDurableObject` (or `TenantDurableObject.configure({ service, migrations })`) to declare monotonic SQLite migrations and domain methods. `TenantDurableObject` extends `DurableObject` from `cloudflare:workers`, so workerd exposes a subclass's public methods over Workers RPC (`await env.ORG.getByName(name).hello()`); `test/workerd/tenant-do-rpc.test.ts` observes that on workerd. `ctx` and `env` are public and `readonly`. Outside workerd, `cloudflare:workers` must resolve to the Hera stub (see the [testing guide](testing.md#3-testing-tenantdurableobject-in-memory-maketesttenantdoharness)). `this.db` is a `HeraSqlClient`: `exec` and `query` run single statements, and `transactSync` / `transactWithOutbox` run a generator inside one SQLite transaction. `tx.enqueueOutbox({ type, payload, id?, availableAt? })` stages an outbox record in that same transaction.
+Subclass `TenantDurableObject` (or `TenantDurableObject.configure({ service, migrations })`) to declare monotonic SQLite migrations and domain methods. `TenantDurableObject` extends `DurableObject` from `cloudflare:workers`, so workerd exposes a subclass's public methods over Workers RPC (`await env.ORG.getByName(name).hello()`); `test/workerd/tenant-do-rpc.test.ts` observes that on workerd. `ctx` and `env` are public and `readonly`. Outside workerd, `cloudflare:workers` must resolve to the Hera stub (see the [testing guide](testing.md#3-testing-tenantdurableobject-in-memory-maketesttenantdoharness)). `this.db` is a `HeraSqlClient`: `exec` and `query` run single statements, and `transactSync` / `transactWithOutbox` run a generator inside one SQLite transaction. `tx.enqueueOutbox({ type, payload, id?, availableAt? })` stages an outbox record in that same transaction; `ordered: true` also takes the object's next sequence number ([§3](#ordered-enqueues-a-per-object-sequence-ordered-true)).
 
 ```ts
 import {
@@ -157,7 +157,7 @@ export class OrderTenantDO extends TenantDurableObject.configure({
 Construction writes nothing to an object that has no state, so a read naming a tenant that was never used (a forged claim, a lookup of a fresh id) leaves `sqlite_master` empty and allocates no database.
 
 - **On wake**, under `blockConcurrencyWhile`, an object that already holds `_hera_migrations` (or the configured legacy ledger) is brought to the end of its migrations before it serves a request, so its reads see the current schema. A fresh object is left untouched. Migration descriptors are still validated at construction, so a duplicate version throws from `new`.
-- **The first write** creates `_hera_migrations`, `_hera_outbox` and `_hera_alarm_meta` and applies every migration. `transactSync` and `transactWithOutbox` do this inside their own transaction, before your effect runs, so a rolled-back first write rolls the initialisation back too. `db.exec`, a bare `db.enqueueOutbox` and `scheduleDomainAlarm` are write paths as well. A migration that fails on the first write surfaces as that write's `HeraMigrationError`.
+- **The first write** creates `_hera_migrations`, `_hera_outbox`, `_hera_outbox_seq` and `_hera_alarm_meta` and applies every migration. `transactSync` and `transactWithOutbox` do this inside their own transaction, before your effect runs, so a rolled-back first write rolls the initialisation back too. `db.exec`, a bare `db.enqueueOutbox` and `scheduleDomainAlarm` are write paths as well. A migration that fails on the first write surfaces as that write's `HeraMigrationError`.
 - **Reads on an uninitialised object answer empty.** `getAppliedMigrations()` returns `[]`, the outbox and alarm getters return `[]` / `null`, `drainOutbox()` returns a zero result, `cancelDomainAlarm()` is a no-op, and `alarm()` writes and arms nothing. `db.query` stays a pure read, so guard reads of your own tables with `this.isInitialized()` or `db.isInitialized()`:
 
 ```ts
@@ -182,9 +182,60 @@ Cloudflare Durable Object SQLite transactions (`storage.transactionSync(...)`) o
 
 `db.transactSync(function* (tx) { ... })` and `db.transactWithOutbox(function* (tx) { ... })` enforce this structurally:
 - `tx.exec`, `tx.query`, and `tx.enqueueOutbox` return `SyncEffect` values that execute synchronously inside `storage.transactionSync`. The `SyncTx` namespace (`SyncTx.succeed`, `SyncTx.fail`, `SyncTx.try`, `SyncTx.gen`, ...) builds more of them.
+- `hasSqlTable(storage.sql, name)` and `hasSqlTableTx(db | tx, name)` report whether a table exists. The raw form probes `sqlite_master` and never creates storage; the tx form runs through `query`, so inside `transactSync` it sees the same snapshot as the statements around it (and, like any `db` statement, initialises storage first).
 - Yielding an async `Effect` (such as `Effect.promise` or `Effect.sleep`) is a compile-time error, because the generator may only yield `SyncEffect`s. If one is forced through anyway, the transaction rolls back and fails with `SyncTxAsyncViolationError`.
 - A failed transaction rolls back every statement and every staged outbox record.
 - `transactWithOutbox` is the form to use when the generator enqueues outbox events. When it commits, `TenantDurableObject` automatically multiplexes the next outbox retry timestamp and any domain alarm (`scheduleDomainAlarm`) into Cloudflare's single `storage.setAlarm(...)` slot. `transactSync` commits the same way but does not arm the alarm.
+
+### Ordered enqueues: a per-object sequence (`ordered: true`)
+
+`tx.enqueueOutbox({ ordered: true, ... })` takes the object's next sequence number inside the
+enqueuing transaction. The number lives in Hera's `_hera_outbox_seq` row, so it is strictly
+increasing per object, survives isolate eviction and restarts, and is never reused: a transaction
+that rolls back gives its number back, so the next commit takes it. The returned record carries it
+as `seq`. The row's id is `idPrefix` (default `outbox_seq_`) plus the number zero-padded to 16
+digits, so it is a stable dedupe key (`event_id`), and `payload` may be a function of the number.
+An ordered row's `created_at` never goes below the previous ordered row's, so the drain's
+`(created_at, id)` order is sequence order even when the clock steps back. A bare
+`db.enqueueOutbox({ ordered: true, ... })` runs in a transaction of its own. An ordered enqueue
+cannot name an `id`.
+
+```ts
+import { Hera, type HeraSyncTx } from "@sibylline-labs/hera";
+
+export class StreamTenantDO extends Hera.TenantDurableObject.configure({ service: "stream-do" }) {
+  append(tx: HeraSyncTx, envelope: { readonly type: string }) {
+    return tx.gen(function* () {
+      const record = yield* tx.enqueueOutbox({
+        ordered: true,
+        idPrefix: "stream_",
+        type: envelope.type,
+        payload: (seq) => ({ ...envelope, seq }),
+      });
+      return record.seq; // 1, 2, 3 … ; record.id is "stream_0000000000000001", …
+    });
+  }
+}
+```
+
+**Moving an existing counter onto it.** A migration that switches a hand-rolled sequence table to
+`ordered: true` runs `HeraOutbox.seedSequenceSql(expr)`, which raises the sequence to `expr` and
+never lowers it (an empty source reads as 0). Hera's tables exist before your migrations run, so the
+seed can run in the same migration list:
+
+```ts
+import { HeraOutbox, type HeraMigration } from "@sibylline-labs/hera";
+
+export const SEQ_ONTO_HERA: HeraMigration = {
+  version: 9,
+  name: "seq_onto_hera",
+  sql: [HeraOutbox.seedSequenceSql("(SELECT seq FROM stream_seq WHERE id = 1)")],
+};
+```
+
+A restore that skips Hera's `_hera_*` tables re-seeds with the restored number,
+`tx.exec(HeraOutbox.seedSequenceSql("?"), [restoredSeq])`, or the next ordered enqueue would reuse
+a number already sent.
 
 ## 4. The Composite Alarm
 
@@ -523,3 +574,49 @@ transaction, which rolls back everything the transaction wrote.
 
 The declared graph stays readable on the machine (`table`, `pk`, `column`, `states`, `initial`,
 `terminal`, `transitions`, all frozen), and the `define({ … })` literal is what static tooling reads.
+
+## 10. Plain-Stub Doors (`runDoor`, `propagatingStub`)
+
+A door is a public method a Worker calls through a plain Workers RPC stub that answers a raw value,
+not a `HeraRpcResult` envelope (`Hera.rpcMethod` covers the envelope case). `this.runDoor(name,
+callArgs, body)` runs one call as an invocation of the object's `telemetry()` (the same hook alarm
+passes use), parented under the caller's `traceparent` when the call's last argument is Hera's
+marked invoke meta, a fresh root otherwise. The promise settles with the body's own value or
+rejection. `this.runDoorSync` is the synchronous form; the free functions `runDoor(hook, …)` /
+`runDoorSync(hook, …)` take a `HeraTelemetryHook` (or `undefined`) for a class that is not a Hera base.
+
+`body` receives `within`. Every effect the body runs on a fresh runtime, `runWithTenantCtx`
+included, goes through it, so its spans and log lines join the door's invocation instead of falling
+back to the console:
+
+```ts
+import * as Effect from "effect/Effect"
+import { createHeraLogger, Hera } from "@sibylline-labs/hera"
+import { givenOptional } from "@sibylline-labs/hera/rpc"
+import { HeraTelemetry } from "@sibylline-labs/hera/telemetry"
+
+declare const isolateTelemetry: ReturnType<typeof HeraTelemetry.make>
+const logger = createHeraLogger({ service: "ledger" })
+
+export class LedgerDO extends Hera.TenantDurableObject.configure({ service: "ledger" }) {
+  protected override telemetry() {
+    return isolateTelemetry
+  }
+
+  /** A door: the trailing `callArgs` hold the caller's marked meta, when it sent one. */
+  rows(limit?: number, ...callArgs: ReadonlyArray<unknown>): Promise<number> {
+    const max = givenOptional(limit) ?? 50
+    return this.runDoor("ledger.rows", [limit, ...callArgs], (within) =>
+      this.runWithTenantCtx(within(logger.info("ledger.rows").pipe(Effect.as(max))))
+    )
+  }
+}
+```
+
+The caller wraps its stub with `propagatingStub(stub, traceparent)` (`@sibylline-labs/hera/rpc`),
+which appends `{ __heraRpcMeta: true, traceparent }` after the arguments of every method call and
+leaves `fetch`, `connect`, `then` and symbol-keyed members alone; with no `traceparent` it answers
+the stub itself. Its type, `HeraFilledStub<T>`, makes every optional parameter a required
+`X | undefined`, so a caller cannot leave the slot the meta would fall into: write
+`stub.rows(undefined)`, not `stub.rows()`. A door still reads each optional through
+`givenOptional`, for callers that do not use the wrapper.

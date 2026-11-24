@@ -1,0 +1,228 @@
+name: release
+
+# Verifies the release commit, creates or updates the GitHub release, and publishes
+# @sibylline-labs/hera to npm through trusted publishing (OIDC).
+#
+# Triggers:
+#   - push of a tag `v*`: releases that tag. A tag with a hyphen (v0.3.0-rc.1) is a
+#     pre-release, which GitHub's latest release skips and npm publishes under `next`.
+#   - workflow_dispatch (`tag`, `prerelease`): releases the dispatched ref under `tag`,
+#     creating the tag at that commit when absent. A tag that already exists must point
+#     at that exact commit, or `plan` refuses (re-dispatch with `--ref <tag>`).
+#
+# Secrets: none. The npm job holds no long-lived token; it exchanges its GitHub OIDC
+# token (`id-token: write`) for a short-lived npm publish token bound to
+# `sibylline-labs/hera` and `.github/workflows/release.yml`. Because this file ships in
+# both the private mirror and the public repository, `plan` runs only when the
+# repository is public (`!github.event.repository.private`).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify and publish, e.g. v0.2.1 or v0.3.0-rc.1"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the release as a pre-release (publishes to npm `next` dist-tag)"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Validates the tag grammar, existing-tag commit binding, and pre-release flag once.
+  # Runs only on the public repository; downstream jobs inherit this gate through `needs`.
+  plan:
+    name: plan (tag, pre-release flag)
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            tag="$INPUT_TAG"
+            pre="$INPUT_PRERELEASE"
+          else
+            tag="$REF_NAME"
+            if [[ "$tag" == *-* ]]; then pre=true; else pre=false; fi
+          fi
+          if ! [[ "$tag" =~ ^v[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "::error title=Bad release tag::'$tag' must look like v0.2.1 or v0.3.0-rc.1"
+            exit 1
+          fi
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            at=$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}" || true)
+            if [[ -n "$at" && "$at" != "$GITHUB_SHA" ]]; then
+              echo "::error title=Tag exists at another commit::$tag is at $at, but this run builds $GITHUB_SHA. Dispatch with --ref $tag to rebuild it, or pick a new tag."
+              exit 1
+            fi
+          fi
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "prerelease=$pre" >>"$GITHUB_OUTPUT"
+
+  # Full verification gate before any GitHub release or npm publish runs.
+  verify:
+    name: verify (typecheck, lint, test, secrets)
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install ast-grep
+        env:
+          AST_GREP_VERSION: 0.50.0
+          AST_GREP_CHECKSUM: 0fd3f489639abb8465a914b74b8779171577582318d8a940d00399f59dba81c5
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/ast-grep.zip" \
+            "https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-x86_64-unknown-linux-gnu.zip"
+          echo "${AST_GREP_CHECKSUM}  ${RUNNER_TEMP}/ast-grep.zip" | sha256sum -c -
+          unzip -q -d "${RUNNER_TEMP}" "${RUNNER_TEMP}/ast-grep.zip" ast-grep
+          sudo install -m 0755 "${RUNNER_TEMP}/ast-grep" /usr/local/bin/ast-grep
+          ast-grep --version
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_CHECKSUM: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_CHECKSUM}  ${RUNNER_TEMP}/${archive}" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" gitleaks
+          sudo install -m 0755 "${RUNNER_TEMP}/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test
+
+      - name: Scan the archived tree
+        run: |
+          tree="${RUNNER_TEMP}/tree"
+          mkdir -p "${tree}"
+          git archive HEAD | tar -x -C "${tree}"
+          gitleaks dir "${tree}" --config .gitleaks.toml --redact --no-banner
+
+  # The only job that writes the repository: holds `contents: write` and runs no repo code.
+  publish:
+    name: publish (GitHub release)
+    needs: [plan, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+    steps:
+      - name: Create or update release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --prerelease="$PRERELEASE"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes --prerelease="$PRERELEASE"
+          fi
+          gh release view "$TAG" --json tagName,isPrerelease,url --jq '{tagName, isPrerelease, url}'
+
+  # Publishes @sibylline-labs/hera via npm trusted publishing (OIDC), which attaches SLSA
+  # provenance automatically. Requires a GitHub-hosted runner, Node 24, and npm >= 11.5.1.
+  # `id-token: write` reaches every step in this job, so no step runs repository code:
+  # no bun, no node, no npx, and every npm command carries `--ignore-scripts`.
+  npm:
+    name: npm (@sibylline-labs/hera)
+    needs: [plan, verify, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No registry-url: that writes an .npmrc reading a token, and this job holds none.
+      # Node 24 bundles npm 11; Node 22 bundles npm 10 (below the 11.5.1 OIDC floor).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: npm supports trusted publishing
+        run: |
+          v=$(npm --version)
+          IFS=. read -r major minor patch <<<"${v%%-*}"
+          if (( major < 11 || (major == 11 && (minor < 5 || (minor == 5 && patch < 1))) )); then
+            echo "::error title=npm too old::npm $v cannot publish through trusted publishing, which needs 11.5.1 or later"
+            exit 1
+          fi
+          echo "npm $v"
+
+      # Checked before dry-run so re-running a completed release stays idempotent:
+      # `npm publish --dry-run` exits non-zero when the version already exists on npm.
+      - name: Check whether version is already published
+        id: published
+        run: |
+          version="${TAG#v}"
+          if [[ "$(npm view --ignore-scripts "@sibylline-labs/hera@${version}" version 2>/dev/null || true)" == "$version" ]]; then
+            echo "@sibylline-labs/hera@${version} is already published"
+            echo "already=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "already=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Stamp the version and dry-run publish
+        if: steps.published.outputs.already != 'true'
+        run: |
+          npm version "${TAG#v}" --no-git-tag-version --ignore-scripts --allow-same-version
+          if [[ "$PRERELEASE" == true ]]; then dist=next; else dist=latest; fi
+          npm publish --dry-run --ignore-scripts --tag "$dist"
+
+      - name: Publish
+        if: steps.published.outputs.already != 'true'
+        run: |
+          if [[ "$PRERELEASE" == true ]]; then dist=next; else dist=latest; fi
+          npm publish --access public --ignore-scripts --tag "$dist"

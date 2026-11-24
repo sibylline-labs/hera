@@ -18,6 +18,8 @@ import {
   RateLimitedError,
 } from "./errors.js"
 import { exchange } from "./exchange.js"
+import { connectionPages } from "./connection-pages.js"
+import { createOnce } from "./create-once.js"
 import { graphql } from "./graphql.js"
 import { gunzipBase64Bounded, gunzipBounded } from "./gunzip.js"
 import { toProblemResponse } from "./problem-response.js"
@@ -162,6 +164,8 @@ export const HeraHttp = {
   patch,
   delete: del,
   graphql,
+  createOnce,
+  connectionPages,
   RateLimitedError,
   HeraHttpError,
   HeraBodyReadError,

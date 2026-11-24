@@ -6,4 +6,5 @@
 /.claude/** export-ignore
 /eris.yaml export-ignore
 /scripts/public-cut.sh export-ignore
+/scripts/public-sync.sh export-ignore
 /test/hygiene/surfaces.test.ts export-ignore

@@ -77,10 +77,16 @@ row) says sampled (`01`) only when something exports the span it names: a span o
 invocation that sampled it, or a remote parent its caller sampled. Effect's default tracer marks
 every span sampled, so a span outside any invocation propagates as `00`.
 
+A plain-stub door (`runDoor`) reads only its call's last argument as invoke meta, and only that
+meta's `traceparent`, as an `internal` source. Its body's `within` grafts the invocation's tracer,
+loggers, log capture and span onto effects it runs on a fresh runtime (`Effect.runPromise`,
+`runWithTenantCtx`), so a line logged there exports with the door.
+
 ## Exceptions
 
 A span that dies, fails uncatalogued, or fails with a catalogued status ≥ 500 gets status ERROR, an
 `exception` event and `logfire.exception.fingerprint`. A catalogued 4xx records `error.code` only.
+A catalogued error's `fields` also export, as `error.field.<key>`, for the failures above and the 4xx alike: at most 8, under identifier keys, and only code-shaped strings (letter words joined by `_ . : -`, at most 48 characters, no word over 20 letters), finite numbers and booleans. A free-text value, a bearer token, a JWT, a hex digest, a UUID or any other opaque id is dropped, so neither an upstream's own words nor a credential reaches a span.
 
 | Member | Does |
 |---|---|
@@ -96,6 +102,7 @@ A span that dies, fails uncatalogued, or fails with a catalogued status ≥ 500 
 | `Hera.rpcMethod` | spec `telemetry: { telemetry, waitUntil: (p) => this.ctx.waitUntil(p) }` |
 | `Hera.queueConsumer` | spec `telemetry: telemetry \| (env) => telemetry`; `waitUntil` from the handler's `ctx` |
 | `TenantDurableObject` / `KeyedDurableObject` alarms | override `protected telemetry()` |
+| A plain-stub Durable Object door (raw value, no envelope) | `this.runDoor(name, callArgs, body)` over `telemetry()`, or `runDoor(hook, …)`; the caller wraps its stub in `propagatingStub(stub, traceparent)` ([guide](durable-objects.md#10-plain-stub-doors-rundoor-propagatingstub)) |
 | Your own runner | `HeraTelemetry.run(telemetry, options, effect)`, `HeraTelemetry.scoped`, `HeraTelemetry.layer` |
 
 ## Configuration and failure

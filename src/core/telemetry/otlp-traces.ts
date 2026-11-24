@@ -42,6 +42,7 @@ function toOtlpSpan(captured: CapturedSpan, rules: ScrubRules, parents: Readonly
   const parentSpanId = Option.isSome(span.parent) ? span.parent.value.spanId : undefined
   const extra: Record<string, unknown> = {
     ...(captured.errorCode !== undefined ? { "error.code": captured.errorCode } : {}),
+    ...Object.fromEntries(Object.entries(captured.errorFields ?? {}).map(([key, value]) => [`error.field.${key}`, value])),
     ...(exception !== undefined ? { "logfire.exception.fingerprint": exception.fingerprint } : {}),
   }
   const events = recordedEvents(span).map(([name, time, attributes]) => ({

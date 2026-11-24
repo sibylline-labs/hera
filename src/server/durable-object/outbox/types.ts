@@ -3,9 +3,27 @@ import type { HeraLogger } from "../../../core/logger/index.js"
 import type { OrgId, RequestId } from "../../../core/schema/index.js"
 
 export interface HeraOutboxEventInput<Payload = unknown> {
+  readonly ordered?: false | undefined
   readonly id?: string | undefined
   readonly type: string
   readonly payload: Payload
+  readonly requestId?: RequestId | string | undefined
+  readonly availableAt?: number | undefined
+}
+
+/**
+ * An enqueue that takes the object's next sequence number inside the caller's transaction: the
+ * row's id is `idPrefix` + the number zero-padded to 16 digits, and `payload` may be built from it.
+ * The number survives isolate eviction, is never reused, and goes back on a rollback.
+ */
+export interface HeraOrderedOutboxEventInput<Payload = unknown> {
+  readonly ordered: true
+  /** Default `outbox_seq_`. */
+  readonly idPrefix?: string | undefined
+  /** The id is derived from the sequence number. */
+  readonly id?: never
+  readonly type: string
+  readonly payload: Payload | ((seq: number) => Payload)
   readonly requestId?: RequestId | string | undefined
   readonly availableAt?: number | undefined
 }
@@ -30,6 +48,15 @@ export interface HeraOutboxRecord<Owner extends string = OrgId> {
   readonly createdAt: number
 }
 
+/** What an enqueue's implementation takes; callers see the `HeraEnqueueOutbox` overloads. */
+export type AnyOutboxEventInput<Payload = unknown> =
+  | HeraOutboxEventInput<Payload>
+  | HeraOrderedOutboxEventInput<Payload>
+
+/** The record an ordered enqueue wrote: `seq` is the object's sequence number it took. */
+export type HeraOrderedOutboxRecord<Owner extends string = OrgId> = HeraOutboxRecord<Owner> & {
+  readonly seq: number
+}
 
 export interface HeraOutboxDrainResult {
   readonly drained: number

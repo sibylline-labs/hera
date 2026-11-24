@@ -12,6 +12,7 @@ import {
   stripTrailingNewline,
   unwrap,
 } from "./env-reader.js";
+import { dialReaders, dials } from "./dials.js";
 import { hexKey } from "./hex-key.js";
 import { Keyring, keyring } from "./keyring.js";
 import { managedVariables } from "./managed-variables.js";
@@ -25,9 +26,10 @@ export * from "./hex-key.js";
 export * from "./keyring.js";
 export * from "./primitives.js";
 export * from "./managed-variables.js";
+export * from "./dials.js";
 
 /**
- * `HeraConfig` namespace: 3-state secret, hex-key and keyring readers.
+ * `HeraConfig` namespace: 3-state secret, hex-key and keyring readers, managed variables and dials.
  */
 export const HeraConfig = {
   TRAILING_LINE_ENDING,
@@ -37,6 +39,8 @@ export const HeraConfig = {
   Keyring,
   secret,
   managedVariables,
+  dials,
+  dialReaders,
   hexKey,
   keyring,
   isUnconfigured,

@@ -33,6 +33,7 @@ src/
 │   │   ├── hex-key.ts                        # HeraConfig.hexKey() 32-byte hex key reader
 │   │   ├── keyring.ts                        # Keyring (versioned v<N>:<hex> keys) & HeraConfig.keyring()
 │   │   ├── managed-variables.ts              # HeraConfig.managedVariables(): a Logfire managed variable with a code fallback
+│   │   ├── dials.ts                          # HeraConfig.dials() / dialReaders(): a JSON-object variable merged over code defaults
 │   │   └── primitives.ts                     # Declarative config descriptors
 │   ├── errors/
 │   │   ├── index.ts
@@ -131,6 +132,7 @@ src/
 │   │   │   └── runner.ts                     # Monotonic SQLite migration runner under blockConcurrencyWhile
 │   │   ├── outbox/
 │   │   │   ├── schema.ts                     # Outbox DDL & exponential backoff calculator
+│   │   │   ├── sequence.ts                   # _hera_outbox_seq: the ordered enqueue's per-object sequence and its seed
 │   │   │   ├── store.ts                      # SQLite outbox enqueue, claim, ack, and dead-letter queries
 │   │   │   ├── alarm-slot.ts                 # Composite alarm slot: clamp, sync, wake re-arm, domain schedule
 │   │   │   ├── composite-alarm.ts            # One alarm pass: drain, domain hook, due jobs, earliest-wins re-arm

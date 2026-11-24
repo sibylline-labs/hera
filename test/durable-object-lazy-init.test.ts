@@ -80,6 +80,7 @@ describe("TenantDurableObject lazy storage initialisation", () => {
       "_hera_migrations",
       "_hera_outbox",
       "_hera_outbox_dead_letter",
+      "_hera_outbox_seq",
       "items",
     ])
     expect(tenantDo.getAppliedMigrations().map((m) => m.version)).toEqual([1, 2])

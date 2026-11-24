@@ -4,9 +4,13 @@ import { type RequestId } from "../../../core/schema/index.js"
 import { ambientTraceparent } from "../../../core/telemetry/traceparent.js"
 import { wrapSqlError } from "../sql/storage-adapter.js"
 import { brandSyncEffect, SyncTx } from "../sql/sync-tx.js"
-import { type HeraOutboxOrdering } from "./types.js"
+import { DEFAULT_ORDERED_ID_PREFIX, orderedOutboxId, takeOutboxSeq } from "./sequence.js"
 import {
-  type HeraOutboxEventInput,
+  type AnyOutboxEventInput,
+  type HeraOrderedOutboxRecord,
+  type HeraOutboxOrdering,
+} from "./types.js"
+import {
   type HeraOutboxRecord,
   HeraSqlError,
   type SyncEffect,
@@ -19,12 +23,12 @@ import {
 } from "./schema.js"
 
 export function enqueueOutboxRecord<Payload = unknown>(options: {
-  readonly sqlStorage: SqlStorage
+  readonly storage: DurableObjectStorage
   readonly orgId: string
   readonly now: () => number
   readonly getActiveRequestId: () => RequestId | undefined
-  readonly event: HeraOutboxEventInput<Payload>
-}): SyncEffect<HeraOutboxRecord<string>, HeraSqlError> {
+  readonly event: AnyOutboxEventInput<Payload>
+}): SyncEffect<HeraOutboxRecord<string> | HeraOrderedOutboxRecord<string>, HeraSqlError> {
   // The enqueuing fiber's span and request id; synchronous reads, so the write stays in its tx.
   const ambient = Effect.withFiber((fiber) => {
     return Effect.succeed({
@@ -42,54 +46,83 @@ export function enqueueOutboxRecord<Payload = unknown>(options: {
         })
       }
       const nowMs = options.now()
-      const id =
-        typeof event.id === "string" && event.id.trim().length > 0
-          ? event.id
-          : generateOutboxEventId(nowMs)
-      const payloadJson = JSON.stringify(event.payload ?? null)
       const requestId =
         event.requestId !== undefined
           ? String(event.requestId)
           : (options.getActiveRequestId() ?? fromFiber.requestId ?? null)
-      const traceparent = fromFiber.traceparent ?? null
-      const nextAttemptAt =
-        event.availableAt !== undefined && Number.isFinite(event.availableAt)
-          ? event.availableAt
-          : nowMs
-
-      options.sqlStorage
-        .exec(
-          `INSERT INTO _hera_outbox (
-            id, org_id, event_type, payload_json, request_id, traceparent, attempts, next_attempt_at, last_error, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, NULL, ?)`,
-          id,
-          options.orgId,
-          event.type,
-          payloadJson,
-          requestId,
-          traceparent,
-          nextAttemptAt,
-          nowMs
-        )
-        .toArray()
-
-      return {
-        id,
+      const row: OutboxRowFields = {
         orgId: options.orgId,
         type: event.type,
-        eventType: event.type,
-        payload: event.payload,
-        payloadJson,
         requestId,
-        ...(traceparent !== null ? { traceparent } : {}),
-        attempts: 0,
-        nextAttemptAt,
-        lastError: null,
-        createdAt: nowMs,
+        traceparent: fromFiber.traceparent ?? null,
+        nextAttemptAt:
+          event.availableAt !== undefined && Number.isFinite(event.availableAt) ? event.availableAt : nowMs,
       }
+      if (event.ordered === true) {
+        // A savepoint inside a caller's transaction, a transaction of its own on a bare enqueue:
+        // the number is taken only if the row is written.
+        return options.storage.transactionSync(() => {
+          const taken = takeOutboxSeq(options.storage.sql, nowMs)
+          const payload = typeof event.payload === "function"
+            ? (event.payload as (seq: number) => Payload)(taken.seq)
+            : event.payload
+          const id = orderedOutboxId(event.idPrefix ?? DEFAULT_ORDERED_ID_PREFIX, taken.seq)
+          const record = insertOutboxRow(options.storage.sql, { ...row, id, payload, createdAt: taken.createdAt })
+          return { ...record, seq: taken.seq }
+        })
+      }
+      const id =
+        typeof event.id === "string" && event.id.trim().length > 0
+          ? event.id
+          : generateOutboxEventId(nowMs)
+      return insertOutboxRow(options.storage.sql, { ...row, id, payload: event.payload, createdAt: nowMs })
     },
     catch: wrapSqlError("enqueueOutbox", "Outbox insert failed"),
   })))
+}
+
+interface OutboxRowFields {
+  readonly orgId: string
+  readonly type: string
+  readonly requestId: string | null
+  readonly traceparent: string | null
+  readonly nextAttemptAt: number
+}
+
+function insertOutboxRow(
+  sqlStorage: SqlStorage,
+  row: OutboxRowFields & { readonly id: string; readonly payload: unknown; readonly createdAt: number }
+): HeraOutboxRecord<string> {
+  const payloadJson = JSON.stringify(row.payload ?? null)
+  sqlStorage
+    .exec(
+      `INSERT INTO _hera_outbox (
+        id, org_id, event_type, payload_json, request_id, traceparent, attempts, next_attempt_at, last_error, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, NULL, ?)`,
+      row.id,
+      row.orgId,
+      row.type,
+      payloadJson,
+      row.requestId,
+      row.traceparent,
+      row.nextAttemptAt,
+      row.createdAt
+    )
+    .toArray()
+  return {
+    id: row.id,
+    orgId: row.orgId,
+    type: row.type,
+    eventType: row.type,
+    payload: row.payload,
+    payloadJson,
+    requestId: row.requestId,
+    ...(row.traceparent !== null ? { traceparent: row.traceparent } : {}),
+    attempts: 0,
+    nextAttemptAt: row.nextAttemptAt,
+    lastError: null,
+    createdAt: row.createdAt,
+  }
 }
 
 export function readPendingOutboxRecords(

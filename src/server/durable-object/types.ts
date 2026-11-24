@@ -9,6 +9,8 @@ import {
 import { type HeraLogger, type LogSink } from "../../core/logger/index.js"
 import { type OrgId, type RequestId } from "../../core/schema/index.js"
 import type {
+  HeraOrderedOutboxEventInput,
+  HeraOrderedOutboxRecord,
   HeraOutboxBackoffOptions,
   HeraOutboxEventInput,
   HeraOutboxOrdering,
@@ -22,6 +24,8 @@ export type {
   HeraOutboxDeliveryReport,
   HeraOutboxDrainResult,
   HeraOutboxEventInput,
+  HeraOrderedOutboxEventInput,
+  HeraOrderedOutboxRecord,
   HeraOutboxFailure,
   HeraOutboxOrdering,
   HeraOutboxRecord,
@@ -164,6 +168,12 @@ export interface HeraTransactFn<Tx = HeraSyncTx> {
   >
 }
 
+/** Stages one outbox record in the current transaction; `ordered: true` also takes the object's next sequence number. */
+export interface HeraEnqueueOutbox<Owner extends string = string> {
+  <Payload = unknown>(event: HeraOrderedOutboxEventInput<Payload>): SyncEffect<HeraOrderedOutboxRecord<Owner>, HeraSqlError>
+  <Payload = unknown>(event: HeraOutboxEventInput<Payload>): SyncEffect<HeraOutboxRecord<Owner>, HeraSqlError>
+}
+
 /** Transaction handle of a `KeyedDurableObject`: a `HeraSyncTx` without `orgId`. */
 export interface HeraKeyedSyncTx<Owner extends string = string> {
   readonly exec: (
@@ -171,9 +181,7 @@ export interface HeraKeyedSyncTx<Owner extends string = string> {
     params?: ReadonlyArray<unknown>
   ) => SyncEffect<HeraSqlExecResult, HeraSqlError>
   readonly query: HeraSqlQueryFn
-  readonly enqueueOutbox: <Payload = unknown>(
-    event: HeraOutboxEventInput<Payload>
-  ) => SyncEffect<HeraOutboxRecord<Owner>, HeraSqlError>
+  readonly enqueueOutbox: HeraEnqueueOutbox<Owner>
   readonly succeed: <A>(value: A) => SyncEffect<A>
   readonly fail: <E>(error: E) => SyncEffect<never, E>
   readonly die: (defect: unknown) => SyncEffect<never>
@@ -209,9 +217,7 @@ export interface HeraKeyedSqlClient<
     params?: ReadonlyArray<unknown>
   ) => SyncEffect<HeraSqlExecResult, HeraSqlError>
   readonly query: HeraSqlQueryFn
-  readonly enqueueOutbox: <Payload = unknown>(
-    event: HeraOutboxEventInput<Payload>
-  ) => SyncEffect<HeraOutboxRecord<Owner>, HeraSqlError>
+  readonly enqueueOutbox: HeraEnqueueOutbox<Owner>
   readonly transactSync: HeraTransactFn<Tx>
   readonly transactWithOutbox: HeraTransactFn<Tx>
   /** Whether the object's storage is initialised; a read on `false` has no tables to read. */

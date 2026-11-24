@@ -188,6 +188,32 @@ export const currentLimit = Hera.fn("Limits.current")(function* () {
 });
 ```
 
+### Dial Groups (`HeraConfig.dials`)
+
+A Worker's tunable numbers (a batch size, a retry delay, a rate limit) often travel together, so a dial group reads them from one JSON-object managed variable over a code-defaults object. `HeraConfig.dials({ name, defaults, overrides, timeoutMs? })` declares the group; `overrides` is a struct of the group's keys, each optional and bounded, so an out-of-bounds value reads as `invalid`. `read(variables)` answers `{ values, source }`: each key the variable sets replaces its default whole, a key it leaves out keeps it, and an unset, unreadable or refused variable answers every default with `source` set to its `HeraManagedValueReason`. It never fails, and it bounds its own wait (default 1.5 s, sized for request paths) whatever timeout the reader was built with, answering `unreachable` when the time runs out.
+
+`HeraConfig.dialReaders({ ttlMs?, timeoutMs?, fetch? })` hands out the readers a group reads through: `reader({ token, base })` returns one `HeraManagedVariables` per `(base, token)`, built on first use, so every group in the isolate shares one cache (one Logfire call per variable per `ttlMs`, default 60 s). `base` is required: a token with no base (or a blank one) answers `unconfigured` and never fetches, so a read key never reaches a host it was not configured for. Hold the `dialReaders()` object at module scope, one per isolate. Nothing here does I/O until the first `read`.
+
+```ts
+import { Hera, HeraConfig } from "@sibylline-labs/hera";
+import * as Schema from "effect/Schema";
+
+declare const env: { readonly LOGFIRE_READ_TOKEN?: string; readonly LOGFIRE_BASE_URL?: string };
+
+const readers = HeraConfig.dialReaders();
+const Positive = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0));
+const ingestDials = HeraConfig.dials({
+  name: "ingest_dials",
+  defaults: { batch: 25, retryMs: 60_000 },
+  overrides: Schema.Struct({ batch: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))), retryMs: Schema.optional(Positive) }),
+});
+
+export const ingestBatch = Hera.fn("Ingest.batch")(function* () {
+  const dials = yield* ingestDials.read(readers.reader({ token: env.LOGFIRE_READ_TOKEN, base: env.LOGFIRE_BASE_URL }));
+  return dials.values.batch;
+});
+```
+
 ## 3. Wire Contracts Live Outside the Framework
 
 Hera carries no product wire contract. Versioned contracts that services share on the wire (a graph

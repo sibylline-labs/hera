@@ -29,14 +29,10 @@ import { deliverToDefaultQueueSink, drainOutboxBatchEffect } from "./outbox/drai
 import { type HeraOutboxSettings, resolveOutboxSettings } from "./outbox/options.js"
 import { DEFAULT_ALARM_ERROR_BACKOFF_MS } from "./outbox/schema.js"
 import { runAlarmInvocation } from "./alarm-telemetry.js"
-import type { HeraTelemetry } from "../../core/telemetry/types.js"
+import type { HeraTelemetry, HeraTelemetryHook } from "../../core/telemetry/types.js"
+import { type HeraDoorWithin, runDoor, runDoorSync } from "./door.js"
 import type { HeraOutboxDeadLetter, HeraOutboxSinkResult } from "./outbox/types.js"
-import {
-  enqueueOutboxRecord,
-  readDomainAlarmAt,
-  readNextOutboxRetryAt,
-  readPendingOutboxRecords,
-} from "./outbox/store.js"
+import { enqueueOutboxRecord, readDomainAlarmAt, readNextOutboxRetryAt, readPendingOutboxRecords } from "./outbox/store.js"
 import { type BeforePurgeResult, purgeDurableObjectStorage } from "./purge.js"
 import { createHeraSqlClient } from "./sql/sync-tx.js"
 import type {
@@ -111,10 +107,7 @@ export abstract class HeraDurableObjectBase<
     this.logger = identity.orgId === undefined ? logger : logger.child({ orgId: identity.orgId })
     this.key = identity.key
     this.logFields = identity.logFields
-    const statics = this.constructor as unknown as {
-      readonly migrations?: ReadonlyArray<HeraMigration>
-      readonly jobs?: HeraJobRegistry
-    }
+    const statics = this.constructor as unknown as { readonly migrations?: ReadonlyArray<HeraMigration>; readonly jobs?: HeraJobRegistry }
     const init = createStorageInitializer({ ctx: this.ctx, now: this.now, migrations: options?.migrations ?? statics.migrations ?? [], legacyLedger: options?.legacyMigrationLedger })
     this.storageInit = guardInitAfterPurge(guardInitDuringAlarm(init, this.inAlarmPass.held), () => this.purged)
     const logAlarmFailure = alarmFailureLogger({ logger: this.logger, logFields: this.logFields, service: this.service })
@@ -123,20 +116,12 @@ export abstract class HeraDurableObjectBase<
     const slotDriver = (): AlarmDriver => (driver ??= this.createAlarmDriver())
     this.alarmSlot = { storage: this.ctx.storage, now: this.now, driver: slotDriver, onArmFailure,
       armsDeferred: this.armDeferral.held, ordering: this.outbox.ordering }
-    const syncAlarmSlot = (): void => {
-      syncCompositeAlarmSlot(this.alarmSlot, this.now())
-    }
+    const syncAlarmSlot = (): void => void syncCompositeAlarmSlot(this.alarmSlot, this.now())
     this.db = createHeraSqlClient({
       orgId: identity.orgId,
       storage: this.ctx.storage,
-      enqueueOutbox: (event) =>
-        enqueueOutboxRecord({
-          sqlStorage: this.ctx.storage.sql,
-          orgId: this.key,
-          now: this.now,
-          getActiveRequestId: () => this.activeRequestId,
-          event,
-        }),
+      enqueueOutbox: (event) => enqueueOutboxRecord({ storage: this.ctx.storage, orgId: this.key, now: this.now,
+        getActiveRequestId: () => this.activeRequestId, event }),
       onAfterOutboxCommit: syncAlarmSlot,
       storageInit: this.storageInit,
       isPurged: () => this.purged,
@@ -215,8 +200,23 @@ export abstract class HeraDurableObjectBase<
     return undefined
   }
 
-  /** The isolate's `HeraTelemetry`: alarm passes then export as invocations. Default: none. */
+  /** The isolate's `HeraTelemetry`: alarm passes and `runDoor` doors then export as invocations. Default: none. */
   protected telemetry(): HeraTelemetry | undefined { return undefined }
+
+  private doorHook(): HeraTelemetryHook | undefined {
+    const telemetry = this.telemetry()
+    return telemetry === undefined ? undefined : { telemetry, waitUntil: (p) => this.ctx.waitUntil(p) }
+  }
+
+  /** Runs a plain-stub door as an invocation of `telemetry()` (`door.ts`): pass the method's trailing args. */
+  protected runDoor<A>(name: string, callArgs: ReadonlyArray<unknown>, body: (within: HeraDoorWithin) => Promise<A>): Promise<A> {
+    return runDoor(this.doorHook(), name, callArgs, body)
+  }
+
+  /** {@link runDoor} for a synchronous body. */
+  protected runDoorSync<A>(name: string, callArgs: ReadonlyArray<unknown>, body: (within: HeraDoorWithin) => A): A {
+    return runDoorSync(this.doorHook(), name, callArgs, body)
+  }
 
   /** Runs one alarm pass; `TenantDurableObject` provides its tenant context here. */
   protected runAlarmProgram(program: Effect.Effect<void, never, never>): Promise<void> {

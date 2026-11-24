@@ -38,3 +38,4 @@ Never report a vulnerability in public. Follow [SECURITY.md](SECURITY.md).
   Build a test credential at run time from parts, as
   [test/fixtures/provider-tokens.ts](test/fixtures/provider-tokens.ts) does.
 - Record each user-visible change in [CHANGELOG.md](CHANGELOG.md).
+- Cut public npm releases by tagging `sibylline-labs/hera` as [docs/dev/RELEASING.md](docs/dev/RELEASING.md) describes.

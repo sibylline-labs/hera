@@ -5,7 +5,7 @@ import { HeraError } from "../../../core/errors/index.js"
 import { type OrgId } from "../../../core/schema/index.js"
 import {
   type ExtractSyncYieldError,
-  type HeraOutboxEventInput,
+  type HeraEnqueueOutbox,
   type HeraKeyedSqlClient,
   type HeraKeyedSyncTx,
   type HeraOutboxRecord,
@@ -17,6 +17,7 @@ import {
   type SyncYieldable,
 } from "../types.js"
 import type { HeraStorageInitializer } from "../migrations/lazy-init.js"
+import type { AnyOutboxEventInput, HeraOrderedOutboxRecord } from "../outbox/types.js"
 import { captureTxContext } from "./carried-context.js"
 import {
   executeSqlCursor,
@@ -162,9 +163,9 @@ function resolveSyncTxEffect<A, E>(
 export function createHeraSqlClient(options: {
   readonly orgId?: OrgId | undefined
   readonly storage: DurableObjectStorage
-  readonly enqueueOutbox: <Payload = unknown>(
-    event: HeraOutboxEventInput<Payload>
-  ) => SyncEffect<HeraOutboxRecord<string>, HeraSqlError>
+  readonly enqueueOutbox: (
+    event: AnyOutboxEventInput
+  ) => SyncEffect<HeraOutboxRecord<string> | HeraOrderedOutboxRecord<string>, HeraSqlError>
   readonly onAfterOutboxCommit: () => void
   readonly storageInit: HeraStorageInitializer
   /** True once `purgeStorage()` passed `beforePurge`: every statement is refused from then. */
@@ -203,11 +204,12 @@ export function createHeraSqlClient(options: {
           rowSchema
         )
       )) as HeraKeyedSyncTx["query"],
-    enqueueOutbox: (event) =>
+    // One cast at the overload boundary: the ordered overload's record is the one carrying `seq`.
+    enqueueOutbox: ((event: AnyOutboxEventInput) =>
       SyncTx.flatMap(
         SyncTx.flatMap(unpurged("enqueueOutbox"), () => ensureStorage("enqueueOutbox")),
         () => options.enqueueOutbox(event)
-      ),
+      )) as HeraEnqueueOutbox<string>,
     succeed: SyncTx.succeed,
     fail: SyncTx.fail,
     die: SyncTx.die,

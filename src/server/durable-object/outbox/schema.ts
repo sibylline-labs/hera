@@ -1,4 +1,5 @@
 import { HERA_JOBS_DDL } from "../jobs/store.js"
+import { HERA_OUTBOX_SEQ_DDL } from "./sequence.js"
 import {
   type HeraOutboxBackoffOptions,
   type HeraOutboxRecord,
@@ -49,6 +50,7 @@ export const HERA_INTERNAL_DDL = [
     value_int INTEGER,
     updated_at INTEGER NOT NULL
   )`,
+  HERA_OUTBOX_SEQ_DDL,
   HERA_JOBS_DDL,
 ] as const
 

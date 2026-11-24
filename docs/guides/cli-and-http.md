@@ -407,6 +407,94 @@ export const readViewer = Hera.fn("Linear.viewer")(function* (accessToken: Redac
 });
 ```
 
+### Create Once Under a Client-Chosen Id (`HeraHttp.createOnce`)
+
+A create can land and lose its reply (a timeout, a 5xx after the write), and a retry then either writes twice or trips the API's duplicate-id check. When the API takes a client-chosen id (Linear's `issueCreate` and `commentCreate` take `input.id`), `HeraHttp.createOnce({ create, find, owns?, definitive? })` makes the create safe to retry:
+
+- `create` succeeds: `{ _tag: "Created", value }`.
+- `create` fails and `definitive(error)` holds: the error, with no read-back. Unset, a rate limit is definitive (`RateLimitedError`, a `HeraHttpError` carrying a `RATELIMITED` GraphQL error, a `HeraError` with status 429).
+- Otherwise `find` reads the id back. Nothing there re-raises the create's own error, so an unverified create never reads as success. An entity `owns(found)` accepts answers `{ _tag: "Found", value: found }`. One it rejects fails `HeraError` `conflict` (409): the id is held by another write. Unset, `owns` accepts any entity under the id.
+- A failing `find` fails with its own error.
+
+`Created` and `Found` let a route answer `201` for a fresh write and `200` for a replay. The id must be fixed before the first attempt (stored, or derived from the request), so every retry sends the same one.
+
+```ts
+import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
+import { Hera, HeraHttp } from "@sibylline-labs/hera";
+
+const Comment = Schema.Struct({ id: Schema.String, body: Schema.String });
+const url = "https://api.linear.app/graphql";
+
+export const postComment = Hera.fn("Linear.postComment")(function* (
+  token: Redacted.Redacted<string>,
+  input: { readonly id: string; readonly issueId: string; readonly body: string },
+) {
+  const auth = { bearer: token };
+  return yield* HeraHttp.createOnce({
+    create: HeraHttp.graphql({
+      url,
+      auth,
+      query: "mutation($input: CommentCreateInput!) { commentCreate(input: $input) { comment { id body } } }",
+      variables: { input },
+      schema: Schema.Struct({ commentCreate: Schema.Struct({ comment: Comment }) }),
+    }).pipe(Effect.map(({ data }) => data.commentCreate.comment)),
+    find: HeraHttp.graphql({
+      url,
+      auth,
+      query: "query($id: String!) { comment(id: $id) { id body } }",
+      variables: { id: input.id },
+      schema: Schema.Struct({ comment: Schema.NullOr(Comment) }),
+    }).pipe(Effect.map(({ data }) => data.comment)),
+    owns: (found) => found.body === input.body,
+  });
+});
+```
+
+### Every Page of a Connection (`HeraHttp.connectionPages`)
+
+A GraphQL connection (`nodes` + `pageInfo { hasNextPage endCursor }`) answers one page at a time. A loop that stops at the first error, or at a page cap, and returns the rows read so far presents part of the list as all of it. `HeraHttp.connectionPages({ page, maxPages })` answers every node, in page order, or fails:
+
+- `page(after, index)` reads one page after `after` (`null` first) and runs once per page, so a lease or token taken inside it is fresh for each page. Its own error fails the whole read, unchanged, so a caller's catch by `code` still matches.
+- A page with no `pageInfo.hasNextPage` fails `HeraError` `upstream_error` (502), `fields.reason: "missing_page_info"`; `hasNextPage` with a missing, null or empty `endCursor` fails `"missing_end_cursor"`. Neither can prove the connection ended.
+- `maxPages` pages that still report `hasNextPage` fail `"truncated"` (`fields.maxPages`), and no page past the cap is requested. A `maxPages` that is not a positive integer fails `internal_error` (500, `"invalid_max_pages"`) before any page.
+
+Map the failure to your own error with `code` and `fields.reason` (e.g. `truncated` to a `thread_too_long`).
+
+```ts
+import * as Effect from "effect/Effect";
+import type * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
+import { Hera, HeraHttp } from "@sibylline-labs/hera";
+
+declare const leaseToken: Effect.Effect<Redacted.Redacted<string>, never>;
+
+const ProjectsPage = Schema.Struct({
+  projects: Schema.Struct({
+    nodes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+    pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean, endCursor: Schema.NullOr(Schema.String) }),
+  }),
+});
+
+export const allProjects = Hera.fn("Linear.allProjects")(function* (maxPages: number) {
+  return yield* HeraHttp.connectionPages({
+    maxPages,
+    page: (after) =>
+      Effect.flatMap(leaseToken, (token) =>
+        HeraHttp.graphql({
+          url: "https://api.linear.app/graphql",
+          auth: { bearer: token },
+          query:
+            "query($first: Int!, $after: String) { projects(first: $first, after: $after) { nodes { id name } pageInfo { hasNextPage endCursor } } }",
+          variables: { first: 50, after },
+          schema: ProjectsPage,
+        }),
+      ).pipe(Effect.map(({ data }) => data.projects)),
+  });
+});
+```
+
 ### OAuth 2.0 Client (`HeraOAuth2.client`)
 
 `HeraOAuth2.client({ tokenUrl, revokeUrl, clientId, clientSecret })` returns `exchangeCode`, `refresh` and `revoke`, each over the `HeraHttp` exchange with client credentials sent as form body params (`client_secret_post`). `clientSecret` is `Redacted<string>` (resolve it with `HeraConfig.secret`), and the returned `HeraOAuth2TokenPair` holds `accessToken` and `refreshToken` as `Redacted<string>`, `expiresAt` (epoch ms) and `scopes`.

@@ -25,6 +25,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.4.4"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
       # `bun run lint` and test/skill-and-rules.test.ts run `ast-grep scan` and `ast-grep test`
       # over the ruleset; the same pinned build and checksum as the org lint gate.
       - name: Install ast-grep
@@ -72,3 +76,57 @@ jobs:
           mkdir -p "${tree}"
           git archive HEAD | tar -x -C "${tree}"
           gitleaks dir "${tree}" --config .gitleaks.toml --redact --no-banner
+
+  # Packs the npm tarball, checks `npm publish --dry-run` on an unpacked synthetic version,
+  # and installs the tarball into an isolated consumer directory to verify subpath exports.
+  npm-pack:
+    runs-on: ${{ github.event.repository.private && 'sib-8vcpu' || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Pack and dry-run publish
+        id: pack
+        run: |
+          set -euo pipefail
+          tarball=$(npm pack --ignore-scripts --silent --pack-destination "${RUNNER_TEMP}")
+          echo "tarball=${RUNNER_TEMP}/${tarball}" >>"$GITHUB_OUTPUT"
+          dry="${RUNNER_TEMP}/dry-run"
+          mkdir -p "${dry}"
+          tar -xzf "${RUNNER_TEMP}/${tarball}" -C "${dry}"
+          cd "${dry}/package"
+          npm version 0.0.0-ci-dry-run --no-git-tag-version --ignore-scripts --allow-same-version
+          npm publish --dry-run --ignore-scripts --tag ci-dry-run
+      - name: Install tarball in an isolated consumer and resolve subpaths
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          app="${RUNNER_TEMP}/consumer"
+          mkdir -p "${app}"
+          cd "${app}"
+          printf '{"name":"consumer","private":true,"type":"module","dependencies":{"@sibylline-labs/hera":"file:%s","effect":"4.0.6"}}\n' "${TARBALL}" > package.json
+          bun install
+          cat > check.ts <<'TS'
+          import { HeraError } from "@sibylline-labs/hera/core";
+          import { HeraSchema } from "@sibylline-labs/hera/schema";
+          import { defineVerb } from "@sibylline-labs/hera/cli/manifest";
+          import { HeraTui } from "@sibylline-labs/hera/tui";
+          import { HeraTest } from "@sibylline-labs/hera/testing";
+          if (typeof HeraError.notFound !== "function" || typeof HeraSchema.decode !== "function") {
+            throw new Error("core or schema subpath did not resolve");
+          }
+          if (typeof defineVerb !== "function" || typeof HeraTui.run !== "function" || typeof HeraTest.runTest !== "function") {
+            throw new Error("cli/manifest, tui or testing subpath did not resolve");
+          }
+          console.log("resolved @sibylline-labs/hera subpaths from tarball");
+          TS
+          bun check.ts

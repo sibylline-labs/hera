@@ -156,6 +156,8 @@ describe("SDK repository layout & documentation hygiene", () => {
     }
   });
 
+  // admits: boundary-io: verifies every required markdown doc exists on disk and every relative
+  // markdown link resolves; neither tsc nor ast-grep validates markdown files or links.
   it("verifies required SDK documentation files exist and relative markdown links resolve", () => {
     const requiredDocs = [
       "README.md",
@@ -169,6 +171,7 @@ describe("SDK repository layout & documentation hygiene", () => {
       "docs/ARCHITECTURE.md",
       "docs/ERRORS.md",
       "docs/dev/LAYOUT.md",
+      "docs/dev/RELEASING.md",
       "docs/guides/schema-and-config.md",
       "docs/guides/workers-and-routes.md",
       "docs/guides/durable-objects.md",

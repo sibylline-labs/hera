@@ -29,3 +29,4 @@ export {
   normalizeBaggage,
   parseTraceparent,
 } from "./trace-context.js"
+export { givenOptional, type HeraFilledStub, propagatingStub } from "./plain-stub.js"
