@@ -7,6 +7,12 @@ the version is 0.x, a minor release may break the API.
 
 ## [Unreleased]
 
+### Changed
+
+- Rewrote `README.md` around what Hera is, why it exists, and concrete use cases; moved the full subpath exports and ambient-type tables into `docs/README.md` and refreshed `docs/ARCHITECTURE.md`.
+
+## [0.2.1] - 2026-11-24
+
 ### Added
 
 - `hasSqlTable` and `hasSqlTableTx` helpers on `@sibylline-labs/hera/durable-object`.

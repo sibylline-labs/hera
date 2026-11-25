@@ -16,10 +16,10 @@ flowchart TD
     end
 
     subgraph Planes["Internal Source Planes (src/)"]
-        Server["src/server/** (Routes, RPC, TenantDurableObject, SyncTx)"]
-        Cli["src/cli/** (HeraCli.verb, ErisError, Runner, AtomicPairWriter, writeFileAtomic, DirLock)"]
-        Core["src/core/** (HeraSchema, HeraConfig, HeraError, HeraLogger, HeraCtx, Hera.fn, HeraHttp)"]
-        Testing["src/testing/** (HeraTest, In-Memory SQLite DO, RPC Doubles, Test Clock)"]
+        Server["src/server/** (Routes, RPC, Queues, Worker Guard, TenantDurableObject, SyncTx, Agent)"]
+        Cli["src/cli/** (HeraCli.verb, HeraCli.program, ErisError, Runner, AtomicPairWriter, writeFileAtomic, DirLock)"]
+        Core["src/core/** (HeraSchema, HeraConfig, HeraError, HeraLogger, HeraCtx, Hera.fn, HeraHttp, HeraTelemetry, HeraFlags)"]
+        Testing["src/testing/** (HeraTest, In-Memory SQLite DO, RPC Doubles, Agent Doubles, Test Clock)"]
     end
 
     Root --> Server
@@ -40,7 +40,8 @@ flowchart TD
 1. **`src/core/`** depends only on `effect`, and Web Standard APIs (`fetch`, `Response`, `crypto.subtle`, `AbortController`). It never imports from `src/server/`, `src/cli/`, or `src/testing/`.
 2. **`src/server/`** depends on `src/core/`. It never imports from `src/cli/` or `src/testing/`, guaranteeing zero Node-only builtin leakage (`node:child_process`, `node:fs`) into Cloudflare Worker bundles.
 3. **`src/cli/`** depends on `src/core/` and Node/Bun runtime builtins (`node:child_process`, `node:fs`, `node:os`, `node:path`). It never imports from `src/server/` or `src/testing/`, so `bun build --compile` produces standalone CLI binaries with zero `cloudflare:workers` imports.
-   - **`src/cli/tui/`** is the exception inside the CLI plane: it imports only its own siblings (no `effect`, no `node:*`, no other plane) and nothing in `src/` imports it, so `@sibylline-labs/hera/cli` never loads it and public eris vendors it flat. [`rules/ast-grep/hera-tui-vendorable.yml`](../rules/ast-grep/hera-tui-vendorable.yml) and [`rules/ast-grep/hera-tui-lazy.yml`](../rules/ast-grep/hera-tui-lazy.yml) hold both halves, and [`test/tui-cold-start.test.ts`](../test/tui-cold-start.test.ts) measures them against the CLI's 50ms budget.
+   - **`src/cli/manifest/`** imports only its own siblings (no `effect`, no `node:*`, no handler code), so `--help`, help-json, docs, and shell completion run without loading handlers or `effect`. [`rules/ast-grep/hera-cli-manifest-pure.yml`](../rules/ast-grep/hera-cli-manifest-pure.yml) enforces this.
+   - **`src/cli/tui/`** imports only its own siblings (no `effect`, no `node:*`, no other plane) and nothing in `src/` imports it, so `@sibylline-labs/hera/cli` never loads it and public eris vendors it flat. [`rules/ast-grep/hera-tui-vendorable.yml`](../rules/ast-grep/hera-tui-vendorable.yml) and [`rules/ast-grep/hera-tui-lazy.yml`](../rules/ast-grep/hera-tui-lazy.yml) hold both halves, and [`test/tui-cold-start.test.ts`](../test/tui-cold-start.test.ts) measures them against the CLI's 50ms budget.
 4. **`src/testing/`** provides test utilities across all planes and is imported only by `test/**` or downstream consumer test suites via `@sibylline-labs/hera/testing`.
 
 These boundaries are continuously enforced by [`test/hygiene/repo-layout.test.ts`](../test/hygiene/repo-layout.test.ts) and [`test/cold-start.test.ts`](../test/cold-start.test.ts).
@@ -87,5 +88,7 @@ Running an Effect via `Effect.runPromise` or `Effect.runSync` inside domain logi
 - `src/server/routes/` (HTTP route boundaries)
 - `src/server/rpc/` (Worker RPC boundaries)
 - `src/server/durable-object/` (Durable Object lifecycle & alarm boundaries)
-- `src/cli/runtime/` (`HeraCli.verb` entry boundary)
+- `src/server/worker/` and `src/core/telemetry/export.ts` (`waitUntil` Promise boundaries)
+- `src/server/agent/tool/registration.ts` and `src/server/agent/host/` (agent runtime Promise boundaries)
+- `src/cli/runtime/` (`HeraCli.verb` / `HeraCli.program` entry boundaries)
 - `src/testing/runner/` (`HeraTest.runTest` boundary)

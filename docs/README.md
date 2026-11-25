@@ -10,9 +10,11 @@ Welcome to the documentation for `@sibylline-labs/hera`, the shared Effect v4 LT
 - [**Releasing & npm Publishing**](dev/RELEASING.md) — The `0.x` stability policy, tagging releases, the OIDC trusted-publishing workflow, the npm tarball allowlist, and provenance verification.
 - [**License, Contributing, Security and Changelog**](../CONTRIBUTING.md) — MIT ([LICENSE](../LICENSE)), the contribution policy, private vulnerability reports ([SECURITY.md](../SECURITY.md)) and the release history ([CHANGELOG.md](../CHANGELOG.md)).
 
-## Ambient Types per Subpath
+## Subpath & Ambient-Type Reference
 
-- [**Ambient types per subpath**](../README.md#ambient-types-per-subpath) — which `@sibylline-labs/hera/*` subpaths typecheck with no ambient types, which need `@cloudflare/workers-types`, and which need Node types. `test/consumers/{pure,worker,cli,testing,testing-do}` enforce it in `bun run typecheck`.
+- [**Package Exports Matrix**](#package-exports-matrix) — every `@sibylline-labs/hera/*` entrypoint, its plane, and primary exports.
+- [**Optional peer dependencies**](#optional-peer-dependencies) — `effect` is the only hard dependency; `/agent*` peers are optional.
+- [**Ambient types per subpath**](#ambient-types-per-subpath) — which subpaths typecheck with no ambient types, which need `@cloudflare/workers-types`, and which need Node types. `test/consumers/{pure,worker,cli,testing,testing-do}` enforce it in `bun run typecheck`.
 
 ## Feature Guides
 
@@ -106,3 +108,59 @@ Welcome to the documentation for `@sibylline-labs/hera`, the shared Effect v4 LT
    - `scrubExceptionStack` (line 1 `Name: [REDACTED]`) and `logfire.exception.fingerprint`; a token without `baseUrl` is refused
    - Plain-stub Durable Object doors (`runDoor`, `propagatingStub`) trace raw-value calls under the caller's `traceparent` ([guide](guides/durable-objects.md#10-plain-stub-doors-rundoor-propagatingstub))
    - `Hera.worker` guards `fetch` / `queue` / `scheduled` and `ctx.waitUntil` so no raw exception text reaches the runtime.
+
+---
+
+## Package Exports Matrix
+
+| Export Path | Plane | Primary Symbols | Description |
+|---|---|---|---|
+| `@sibylline-labs/hera` | Core + Server | `Hera`, `HeraSchema`, `HeraConfig`, `HeraError`, `HeraPublicCtx`, `HeraAuthedCtx`, `HeraTenantCtx`, `HeraLogger`, `HeraHttp`, `HeraWebhook`, `HeraRateLimit`, `HeraCache`, `TenantDurableObject`, `KeyedDurableObject`, `SyncTx`, `HeraStateMachine` | Default Worker/Server + Core entrypoint (never exports CLI or Testing) |
+| `@sibylline-labs/hera/core` | Core | All `src/core/**` exports | Runtime-agnostic core barrel |
+| `@sibylline-labs/hera/schema` | Core | `HeraSchema`, `OrgId`, `ActorId`, `RequestId`, `Ulid`, `Srn`, `parseSrn`, `EnvName`, `ServiceName`, `KeyName`, `GcpProjectId`, `LogfireProject`, `ErrorSlug`, `decode`, `decodeResult`, `decodeResultStrict` | Branded IDs and value-stripping `Schema` decoders |
+| `@sibylline-labs/hera/config` | Core | `HeraConfig`, `HeraEnv`, `HeraConfigError`, `Keyring`, `secret`, `hexKey`, `keyring`, `managedVariables`, `dials`, `dialReaders` | 3-state (`Unconfigured` / `Invalid` / `Valid`) secret, hex-key, and versioned keyring readers, Logfire managed variables, and dial groups |
+| `@sibylline-labs/hera/context` (`./ctx`) | Core | `HeraPublicCtx`, `HeraAuthedCtx`, `HeraTenantCtx`, `HeraCtx` | Ambient request, auth, and tenant `Context.Service` tags |
+| `@sibylline-labs/hera/errors` (`./error`) | Core | `HeraError`, `HERA_ERROR_CATALOG`, `HeraError.codes`, `buildProblemDetails`, `serializeProblemResponse` | Closed-catalog yieldable errors, per-service domain code registries & RFC 7807 `problem+json` serialization |
+| `@sibylline-labs/hera/fn` | Core | `fn`, `enrichSpanFromHeraCtx` | Traced Effect v4 generator wrapper (`Hera.fn`) |
+| `@sibylline-labs/hera/logger` | Core | `HeraLogger`, `HeraLoggerService`, `createHeraLogger`, `HeraEventLogger`, `scrubLogValue`, `scrubLogString`, `CREDENTIAL_SHAPES`, `GITLEAKS_RULES` | Structured JSON logger with typed event registries, in-place credential redaction, and fiber trace correlation |
+| `@sibylline-labs/hera/http` | Core | `HeraHttp` (`request`, `requestBytes`, `graphql`, `createOnce`, `connectionPages`, `raw`, `sse`, `readBody`, `gunzipBounded`), `HeraOAuth2`, `parseRetryAfter`, `toProblemResponse` | Whole-exchange timeout HTTP client, GraphQL + pagination + idempotent create, OAuth 2.0, bounded gzip/body readers, and SSE responses |
+| `@sibylline-labs/hera/object-store` | Core | `HeraObjectStore` (`r2S3`, `credentialsFromApiToken`), `HeraObjectStoreClient`, `HeraStoredObject` | R2 over S3 (SigV4 over WebCrypto), etags, `ifMatch`/`ifNoneMatch` conditional writes, and `customMetadata` |
+| `@sibylline-labs/hera/openapi` | Core | `HeraOpenApi` (`document`), `HeraOpenApiOperation`, `HeraOpenApiSpec` | Deterministic OpenAPI 3.1.0 generation from Effect schemas |
+| `@sibylline-labs/hera/authority` | Core | `HeraAuthorityVerifier`, `HeraAuthorityRefusal`, `refuseAuthority`, `HeraAuthorityCtx` | Product-neutral authority port returning branded `HeraAuthorityCtx<V>` on grant |
+| `@sibylline-labs/hera/flags` | Core | `HeraFlags` (`ofrep`, `fromSource`, `contextKey`, `FALLBACK_EVENT`), `HeraFlagReader` | Per-org feature flags over Logfire OFREP with TTL cache, ETag revalidation, and fail-safe code fallbacks |
+| `@sibylline-labs/hera/telemetry` | Core | `HeraTelemetry` (`make`, `run`, `scoped`, `layer`), `scrubExceptionStack`, `exceptionFingerprint`, `resolveTraceContext` | Per-invocation Effect Tracer + Logger, 48/32 ring with tail promotion, OTLP/JSON export inside `waitUntil` |
+| `@sibylline-labs/hera/server` | Server | `publicRoute`, `authedRoute`, `tenantRoute`, `router`, `prefixRouter`, `HeraWebhook`, `rpcMethod`, `rpcClient`, `queueConsumer`, `TenantDurableObject`, `KeyedDurableObject`, `SyncTx`, `HeraStateMachine` | Full Cloudflare Worker & Durable Object server barrel |
+| `@sibylline-labs/hera/routes` | Server | `publicRoute`, `authedRoute`, `tenantRoute`, `router`, `prefixRouter`, `matchRoutePath`, `matchPrefixRoute`, `resolveRequestId`, `HeraWebhook` | HTTP route builders, authority guard, body caps, routers, and HMAC/Stripe webhook verification |
+| `@sibylline-labs/hera/rpc` | Server | `rpcMethod`, `rpcClient`, `propagatingStub`, `HeraFilledStub`, `givenOptional`, `parseTraceparent`, `formatTraceparent` | Typed Worker-to-Worker RPC boundaries with `{ ok }` envelopes, opt-in retry, and W3C trace propagation |
+| `@sibylline-labs/hera/durable-object` (`./worker`) | Server | `TenantDurableObject`, `KeyedDurableObject`, `SyncTx`, `HeraJobScheduler`, `HeraOutbox`, `AlarmDriver`, `HeraStateMachine`, `runDoor`, `runDoorSync`, `hasSqlTable`, `hasSqlTableTx` | Multi-tenant and keyed SQLite DOs, lazy migrations, transactional outbox + ordered sequences, composite alarm jobs, state machines, and plain-stub doors |
+| `@sibylline-labs/hera/agent` | Server | `Hera.agent`, `Hera.agentTool`, `HeraAgentModels`, `HeraAgentEgress`, `HeraAgentMeter` | Pi Durable agent host on `TenantDurableObject`, Schema-typed tools, and AI Gateway egress allowlist + meter |
+| `@sibylline-labs/hera/agent/telemetry` | Server | `HeraAgentTelemetry` (`make`), `scrubAttributes`, `redactSpan`, `isContentKey` | Scrubbed GenAI OTLP/JSON export for Pi agent runs on `HeraTelemetry` (no OpenTelemetry SDK) |
+| `@sibylline-labs/hera/cli` | CLI | `HeraCli`, `HeraCliCtx`, `HeraCliAuthority`, `ErisError`, `Runner`, `AtomicPairWriter`, `writeFileAtomic`, `DirLock`, `forEachBounded` | Standalone CLI host adapter for `bun build --compile` and Node/Bun CLIs |
+| `@sibylline-labs/hera/cli/errors`, `/cli/fs`, `/cli/process`, `/cli/runtime` | CLI | Granular CLI plane modules (`ErisError` + `scrubFreeText`, `DirLock` + `AtomicPairWriter` + `writeFileAtomic`, `Runner`, verb runtime + `program`) | Subpath imports for CLIs that do not want the full `/cli` barrel |
+| `@sibylline-labs/hera/cli/manifest` | CLI | `defineVerb`, `defineArgs`, `defineGroup`, `definePlugin`, `defineExtension`, `composeProgram`, `runPure`, `helpText`, `helpJson`, `docsJson`, `completionScript` | Pure CLI manifest: single-declaration routing, strict argv, help, docs, and completion with no handler or `effect` loaded |
+| `@sibylline-labs/hera/tui` | CLI | `HeraTui`, `run`, `prompt`, `select`, `confirm`, `terminalIo`, `scriptedIo`, `TuiIo` | Lazy-loaded, dependency-free guided-step TUI |
+| `@sibylline-labs/hera/testing` | Testing | `HeraTest`, `runTest`, `makeTestLayer`, `makeTestRpcDouble`, `makeTestObjectStore`, `makeTestAuthority`, `makeTestTelemetry`, `SAMPLE_IDS` | Deterministic test runner, controllable clock, RPC doubles, and in-memory fakes |
+| `@sibylline-labs/hera/testing/durable-object` | Testing | `HeraTest` (with DO members), `makeTestTenantDoHarness`, `inspectOutbox`, `triggerAlarm` | In-memory SQLite Durable Object harness |
+| `@sibylline-labs/hera/testing/agent` | Testing | `HeraAgentTest` (`script`, `toolCall`, `toolCalls`, `text`, `fail`, `meterRows`) | Scripted model at the agent egress seam (no Pi import needed in tests) |
+| `@sibylline-labs/hera/testing/cloudflare-workers`, `/testing/bun-preload` | Testing | `DurableObject`, `WorkerEntrypoint`, `RpcTarget`, `env` | `cloudflare:workers` stub for vitest and `bun test` outside workerd |
+
+### Optional peer dependencies
+
+`effect` is Hera's only hard dependency. `/agent`, `/agent/telemetry`, and `/testing/agent` also require `agents` and `@earendil-works/{chord,pi-ai,pi-durable,pi-telemetry}`, declared as optional peer dependencies: consumers of those subpaths install them at the versions pinned in `package.json`, while other consumers never download them.
+
+### Ambient types per subpath
+
+A consumer typechecks Hera's `.ts` source under its own `tsconfig` (strict, `moduleResolution: "bundler"`), so each subpath needs the ambient types its source touches. Observed with `bun check` and no ambient types loaded:
+
+| Subpath | Ambient types it needs |
+|---|---|
+| `/core`, `/schema`, `/config`, `/context` (`/ctx`), `/errors` (`/error`), `/fn`, `/logger`, `/http`, `/object-store`, `/openapi`, `/authority`, `/flags`, `/telemetry`, `/routes`, `/rpc` | None (pure TypeScript) |
+| `.` (root barrel), `/server`, `/durable-object` (`/worker`), `/agent`, `/agent/telemetry` | `@cloudflare/workers-types` |
+| `/cli`, `/cli/errors`, `/cli/fs`, `/cli/process`, `/cli/runtime` | Node types (`@types/node` or `bun-types`) |
+| `/cli/manifest` | None (imports only its own siblings) |
+| `/tui` | None (reaches the host only through `TuiIo`) |
+| `/testing` | None (CLI and pure packages import `HeraTest` without workers-types) |
+| `/testing/cloudflare-workers`, `/testing/bun-preload` | None |
+| `/testing/durable-object` | `@cloudflare/workers-types` and Node types (`node:sqlite` via `node:module`) |
+
+The server plane (`.`, `/server`, `/durable-object`) also imports `cloudflare:workers` at runtime because `TenantDurableObject` extends `DurableObject`. A Worker bundle resolves it natively; a test runner outside workerd aliases it to `/testing/cloudflare-workers` ([testing guide](guides/testing.md)). `test/consumers/{pure,worker,cli,testing,testing-do}` enforce this matrix in `bun run typecheck`.
