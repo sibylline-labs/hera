@@ -25,7 +25,7 @@ export const inferenceEnabled = flags.bool("inference-enabled", { targetingKey: 
 | `bool(name, ctx, fallback)` | `Effect<boolean>` | the flag as a boolean for `ctx`, or `fallback` |
 | `value(name, schema, ctx, fallback)` | `Effect<T>` | the flag decoded through `schema`, or `fallback` |
 | `evaluate(name, schema, ctx, fallback)` | `Effect<HeraFlagValue<T>>` | as `value`, tagged `source: "flag"` (with the `variant`) or `source: "fallback"` (with the `reason`) |
-| `HeraFlags.fromSource(source)` | `HeraFlagReader` | the same reader over any `(ctx) => Effect<HeraFlagSnapshot>` source |
+| `HeraFlags.fromSource(source, options?)` | `HeraFlagReader` | the same reader over any `(ctx) => Effect<HeraFlagSnapshot>` source; `options` is `{ warnWindowMs?, maxContexts? }` |
 
 ## Targeting
 
@@ -49,7 +49,7 @@ All state lives in the reader. Hold it in a Durable Object instance or a request
 | `errored` | any other OFREP `errorCode` for the flag |
 | `invalid` | the caller's schema refused the value |
 
-Every fallback writes one warn line, `hera.flags.fallback`, with `{ flag, reason }`. It writes through the ambient `HeraLoggerService` when one is provided, else through `Effect.logWarning`. It warns once per cause per held answer, so a cause warns at most once per TTL window. No token, response body or context value is logged. Bind `org_id` with your logger's `child` if the line needs it.
+Every fallback writes one warn line, `hera.flags.fallback`, with `{ flag, reason }`. It writes through the ambient `HeraLoggerService` when one is provided, else through `Effect.logWarning`. It warns once per context per cause per window, however many reads miss the cache at once: a cause is a whole-read reason, or one flag's per-flag reason. The window is `ttlMs` for `ofrep` and `warnWindowMs` (default 60 000) for `fromSource`. The bound is per reader, so readers in separate isolates or Durable Objects each write their own line. Warn history covers at most `maxContexts` contexts; a dropped context may warn again. No token, response body or context value is logged. Bind `org_id` with your logger's `child` if the line needs it.
 
 ## Testing
 

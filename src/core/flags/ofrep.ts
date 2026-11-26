@@ -86,7 +86,8 @@ export function ofrep(options: HeraOfrepOptions): HeraFlagReader {
     )
   }
 
-  if (token === undefined) return fromSource(() => Effect.succeed(UNCONFIGURED))
+  const warnOptions = { warnWindowMs: ttlMs, maxContexts }
+  if (token === undefined) return fromSource(() => Effect.succeed(UNCONFIGURED), warnOptions)
 
   // Keyed by the canonical context string (strings compare by value in `HeraCache`); the lookup
   // rebuilds the context from it, so a key and its request can never disagree.
@@ -95,5 +96,5 @@ export function ofrep(options: HeraOfrepOptions): HeraFlagReader {
     maxEntries: maxContexts,
     lookup: (key: string) => fetchSnapshot(key, contextFromKey(key), token),
   })
-  return fromSource((ctx: HeraFlagContext) => cache.get(contextKey(ctx)))
+  return fromSource((ctx: HeraFlagContext) => cache.get(contextKey(ctx)), warnOptions)
 }

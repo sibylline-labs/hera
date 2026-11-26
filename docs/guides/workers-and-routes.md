@@ -1,4 +1,4 @@
-# Worker Routes, Routers, Webhooks, Auth Progression, Typed RPC & Queue Consumers (`Hera.publicRoute`, `Hera.authedRoute`, `Hera.router`, `HeraWebhook`, `Hera.rpcClient`, `Hera.queueConsumer`)
+# Worker Routes, Routers, Webhooks, Auth Progression, Typed RPC & Queue Consumers (`Hera.publicRoute`, `Hera.authedRoute`, `Hera.router`, `HeraWebhook`, `Hera.rpcClient`, `Hera.httpRpcMethod`, `Hera.queueConsumer`)
 
 `@sibylline-labs/hera/server` (`@sibylline-labs/hera/routes` and `@sibylline-labs/hera/rpc`) provides HTTP route boundaries, compile-time auth capability gates, Worker-to-Worker RPC adapters and Cloudflare Queues consumers (`Hera.queueConsumer`, [section 3](#3-queue-consumers-heraqueueconsumer)) with automatic request validation, ambient request and tenant context, and RFC 7807 `application/problem+json` error responses (see [ERRORS.md](../ERRORS.md#2-error-envelope-wire-format)).
 
@@ -393,6 +393,54 @@ export const canUseFeature = Hera.fn("Entitlements.canUse")(function* (
   return res.allowed;
 });
 ```
+
+### HTTP over RPC (`Hera.httpRpcMethod`, `Hera.httpRpcClient`)
+
+Forward HTTP across a service binding with these, never with a method that takes a raw `Request` or returns a raw `Response`. A `Request` or `Response` with a body crosses Workers JS RPC as a stream plus a `StreamCanceler` capability, and workerd can cancel the callee as hung after it already answered, killing its `waitUntil` work ([cloudflare/workerd#8674](https://github.com/cloudflare/workerd/issues/8674)). Reading the body to the end does not always avoid it. The HTTP-over-RPC primitive sends plain structured-clone envelopes instead, which carry no stream:
+
+- `HttpRpcRequest`: `{ url, method, headers, body }` and `HttpRpcReply`: `{ status, headers, body }`. `headers` is every `[name, value]` pair in order, each `set-cookie` its own pair; `body` is the whole body as an `ArrayBuffer`, or `null` for `GET` / `HEAD`, a null-body status (`101`, `204`, `205`, `304`) or no body.
+- `toHttpRpcRequest(request, { maxBytes? })` and `toHttpRpcReply(response, { maxBytes? })` read the body whole up to `maxBytes` (default `MAX_HTTP_RPC_BYTES`, 25 MiB; at most `MAX_JS_RPC_MESSAGE_BYTES`, workerd's 32 MiB message limit). A request over the cap rejects with `413 payload_too_large`, refused on its declared `content-length` before a byte is read and otherwise as soon as the stream passes the cap; a reply over the cap rejects with `502 bad_gateway`.
+- `fromHttpRpcRequest(input)` and `fromHttpRpcReply(reply)` take either the envelope or the raw Web value, so the caller and the callee can deploy in either order. Anything else is a `400 invalid_rpc_input` or a `502 bad_gateway`.
+
+`Hera.httpRpcMethod(name, { service?, maxBytes?, layer?, onDefect?, telemetry?, handler | router })` is an `rpcMethod` that reads the request (envelope or raw `Request`), answers it with `handler(request, ctx)` (an Effect of a `Response`) or a `Hera.router` dispatched with the call's `heraCtx` and `tenant`, and returns `Promise<HeraRpcResult<HttpRpcReply>>`. It inherits `rpcMethod`'s span, invoke meta and defect trapping. Have the entrypoint method return its call:
+
+```ts
+import { WorkerEntrypoint } from "cloudflare:workers";
+import {
+  Hera,
+  type HeraRouter,
+  type HeraRpcInvokeMeta,
+  type HeraRpcResult,
+  type HttpRpcReply,
+  type HttpRpcRequest,
+} from "@sibylline-labs/hera";
+
+declare const api: HeraRouter; // Hera.router([...]) over the Worker's routes
+
+const handleMethod = Hera.httpRpcMethod("handle", { service: "api", router: api });
+
+export class ApiEntrypoint extends WorkerEntrypoint {
+  handle(input: HttpRpcRequest, meta?: HeraRpcInvokeMeta): Promise<HeraRpcResult<HttpRpcReply>> {
+    return handleMethod(input, meta);
+  }
+}
+```
+
+`Hera.httpRpcClient(binding | () => binding, { method?, maxBytes?, ...rpcClient options })` gives `fetch(request): Effect<Response, HeraError>`. It sends an `HttpRpcRequest` to `method` (default `"handle"`), fails `413` before calling the binding when the body is over the cap, and rebuilds the callee's `Response`. It is an `rpcClient`, so `retry`, `propagate` and the `503 <service>_unavailable` mapping work as above. A callee still answering a raw `Response`, or a bare `HttpRpcReply` with no `{ ok }` envelope, is read as its reply.
+
+```ts
+import { Hera } from "@sibylline-labs/hera";
+
+declare const env: { readonly API: { handle(input: unknown, meta?: unknown): Promise<unknown> } };
+
+const api = Hera.httpRpcClient(() => env.API, { service: "api", propagate: true });
+
+export const forward = Hera.fn("Gateway.forward")(function* (request: Request) {
+  return yield* api.fetch(request);
+});
+```
+
+`test/workerd/http-rpc.test.ts` observes it on workerd: a `POST` with a JSON body, the caller holding `waitUntil`, ends every callee invocation `ok` and returns the reply body, while a control method taking a raw `Request` it never reads is cancelled.
 
 ---
 

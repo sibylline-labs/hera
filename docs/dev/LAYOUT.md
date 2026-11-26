@@ -73,7 +73,7 @@ src/
 │   │   ├── types.ts                          # HeraFlagContext, HeraFlagReason, HeraFlagSnapshot, HeraFlagReader, HeraOfrepOptions
 │   │   ├── ofrep-wire.ts                     # OFREP bulk wire: contextKey, requestBody (org_id default), decodeBulk
 │   │   ├── ofrep.ts                          # HeraFlags.ofrep: per-context HeraCache + ETag revalidation over HeraHttp.request
-│   │   └── reader.ts                         # HeraFlags.fromSource: fallback, schema decode, one warn per cause per snapshot
+│   │   └── reader.ts                         # HeraFlags.fromSource: fallback, schema decode, one warn per context and cause per window
 │   ├── object-store/                         # HeraObjectStore
 │   │   ├── index.ts                          # HeraObjectStore namespace
 │   │   ├── types.ts                          # HeraObjectStoreClient, HeraStoredObject, get/head/list results

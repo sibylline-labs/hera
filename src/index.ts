@@ -20,7 +20,7 @@ import {
   tenantRoute,
 } from "./server/routes/index.js";
 import { queueConsumer } from "./server/queue/index.js";
-import { rpcClient, rpcMethod } from "./server/rpc/index.js";
+import { httpRpcClient, httpRpcMethod, rpcClient, rpcMethod } from "./server/rpc/index.js";
 import { worker } from "./server/worker/index.js";
 
 export * from "./core/index.js";
@@ -43,6 +43,8 @@ export const Hera = {
   prefixRouter,
   rpcMethod,
   rpcClient,
+  httpRpcMethod,
+  httpRpcClient,
   queueConsumer,
   worker,
   TenantDurableObject,

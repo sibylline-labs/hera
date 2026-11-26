@@ -25,7 +25,7 @@ Most TypeScript stacks accumulate the same boilerplate in every Worker and CLI: 
 ## Use Cases
 
 ### Multi-tenant SaaS backends on Cloudflare Workers & Durable Objects
-Build HTTP APIs, Worker-to-Worker RPC services, Queue consumers, and per-tenant SQLite Durable Objects with consistent auth, error contracts, rate limiting, and observability out of the box.
+Build HTTP APIs, Worker-to-Worker RPC services (typed methods, or HTTP forwarded over a service binding as stream-free envelopes), Queue consumers, and per-tenant SQLite Durable Objects with consistent auth, error contracts, rate limiting, and observability out of the box.
 - **Start with:** [Worker Routes, Routers, Webhooks & RPC](docs/guides/workers-and-routes.md), [Multi-Tenant Durable Objects](docs/guides/durable-objects.md), [Schemas & 3-State Config](docs/guides/schema-and-config.md), [Telemetry](docs/guides/telemetry.md)
 
 ### Durable AI agents on Workers

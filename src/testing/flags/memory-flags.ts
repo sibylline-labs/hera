@@ -28,7 +28,8 @@ const UNREACHABLE: HeraFlagSnapshot = { ok: false, reason: "unreachable" }
 /**
  * An in-memory flag source built on `HeraFlags.fromSource`, so a test falls back and
  * warns exactly as the OFREP reader does, and consumers never fake HTTP. Each context's snapshot is
- * held until the spec changes, as the OFREP reader holds one for its TTL.
+ * held until the spec changes, as the OFREP reader holds one for its TTL. A repeated cause writes
+ * its next line only after the warn window (60 s on the Effect `Clock`).
  */
 export function makeTestFlags(spec: HeraTestFlagSpec = {}): HeraTestFlags {
   const rules = new Map<string, HeraTestFlagRule>(Object.entries(spec))

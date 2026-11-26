@@ -37,10 +37,7 @@ export type HeraFlagEvaluation =
   | { readonly ok: true; readonly value: unknown; readonly variant: string | undefined }
   | { readonly ok: false; readonly reason: "absent" | "errored" }
 
-/**
- * One context's bulk answer: every flag the source resolved, or why the whole read failed. A
- * source returns the same object for as long as it holds the answer; warn dedup keys on it.
- */
+/** One context's bulk answer: every flag the source resolved, or why the whole read failed. */
 export type HeraFlagSnapshot =
   | { readonly ok: true; readonly flags: ReadonlyMap<string, HeraFlagEvaluation> }
   | { readonly ok: false; readonly reason: "unconfigured" | "unreachable" | "rejected" | "unparseable" }
@@ -48,8 +45,16 @@ export type HeraFlagSnapshot =
 /** Answers a context's snapshot. It never fails: a failure is a snapshot with a reason. */
 export type HeraFlagSource = (ctx: HeraFlagContext) => Effect.Effect<HeraFlagSnapshot>
 
+/** How `fromSource` bounds its warn lines. */
+export interface HeraFlagSourceOptions {
+  /** How long a fallback line suppresses its repeats for one context and cause (default 60 000 ms). */
+  readonly warnWindowMs?: number | undefined
+  /** The most contexts whose warn history is held (default `HeraCache.DEFAULT_MAX_ENTRIES`). */
+  readonly maxContexts?: number | undefined
+}
+
 export interface HeraFlagReader {
-  /** `name` as a boolean for `ctx`, or `fallback`; a fallback writes one warn line per cause. */
+  /** `name` as a boolean for `ctx`, or `fallback`; a fallback writes one warn line per context and cause per window. */
   readonly bool: (name: string, ctx: HeraFlagContext, fallback: boolean) => Effect.Effect<boolean>
   /** `name` decoded through `schema` for `ctx`, or `fallback`. */
   readonly value: <S extends Schema.Top>(

@@ -30,3 +30,24 @@ export {
   parseTraceparent,
 } from "./trace-context.js"
 export { givenOptional, type HeraFilledStub, propagatingStub } from "./plain-stub.js"
+export {
+  fromHttpRpcReply,
+  fromHttpRpcRequest,
+  type HttpRpcBodyOptions,
+  type HttpRpcReply,
+  type HttpRpcRequest,
+  isHttpRpcReply,
+  isHttpRpcRequest,
+  MAX_HTTP_RPC_BYTES,
+  MAX_JS_RPC_MESSAGE_BYTES,
+  toHttpRpcReply,
+  toHttpRpcRequest,
+} from "./http-envelope.js"
+export {
+  type HeraHttpRpcClient,
+  type HeraHttpRpcClientOptions,
+  type HeraHttpRpcMethod,
+  type HeraHttpRpcMethodSpec,
+  httpRpcClient,
+  httpRpcMethod,
+} from "./http-method.js"

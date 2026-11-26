@@ -137,6 +137,59 @@ describe("HeraFlags.ofrep", () => {
     expect(warns).toHaveLength(2)
   })
 
+  // admits: integration: concurrent cache misses each warning; only running the fibers shows it
+  it("warns once per cause when 30 concurrent cold reads all miss and fail", async () => {
+    const { flags, calls } = reader(() => new TypeError("down"))
+    const { value, warns } = await runLogged(
+      Effect.all(
+        Array.from({ length: 30 }, () => flags.evaluate(PROBE_FLAG, Schema.Boolean, orgA, false)),
+        { concurrency: "unbounded" }
+      )
+    )
+    expect(calls).toHaveLength(30)
+    expect(value.map((v) => v.source)).toEqual(Array.from({ length: 30 }, () => "fallback"))
+    expect(warns.map((w) => w.reason)).toEqual(["unreachable"])
+  })
+
+  // admits: algorithmic: one context's, flag's or reason's line suppressing another's, or a window not following ttlMs
+  it("keys the warn window on context, flag, reason and ttlMs", async () => {
+    let status = 200
+    const fake = fakeFetch(() => (status === 200 ? { status, ...EMPTY_PROJECT } : { status }))
+    const flags = HeraFlags.ofrep({ token: Redacted.make(TOKEN), base: BASE, fetch: fake.fetch, ttlMs: 10_000 })
+    const lines: LogEntry[] = []
+    const counts = await HeraTest.runTest(
+      Effect.gen(function* () {
+        const seen: number[] = []
+        const step = (name: string, ctx: typeof orgA) =>
+          Effect.andThen(flags.bool(name, ctx, false), Effect.sync(() => seen.push(lines.length)))
+        yield* step("a", orgA)
+        yield* step("a", orgA)
+        yield* step("b", orgA)
+        yield* step("a", orgB)
+        yield* HeraTest.advanceClock("9 seconds")
+        yield* step("a", orgA)
+        yield* HeraTest.advanceClock("2 seconds")
+        yield* step("a", orgA)
+        status = 500
+        yield* HeraTest.advanceClock("11 seconds")
+        yield* step("a", orgA)
+        yield* step("b", orgA)
+        return seen
+      }),
+      HeraTest.layer({ sink: (_line, entry) => lines.push(entry) })
+    )
+    expect(counts).toEqual([1, 1, 2, 3, 3, 4, 5, 5])
+  })
+
+  // admits: algorithmic: warn histories growing with every context ever seen
+  it("keeps at most maxContexts warn histories, dropping the longest unwarned", async () => {
+    const flags = HeraFlags.fromSource(() => Effect.succeed({ ok: false, reason: "unreachable" }), { maxContexts: 1 })
+    const { warns } = await runLogged(
+      Effect.all([flags.bool("f", orgA, false), flags.bool("f", orgA, false), flags.bool("f", orgB, false), flags.bool("f", orgA, false)])
+    )
+    expect(warns).toHaveLength(3)
+  })
+
   // admits: no revalidation, an ETag sent to the wrong context, or a 304 read as a failure; wire behaviour
   it("revalidates with the context's own ETag and reuses its flags on a 304", async () => {
     const { flags, calls } = reader(logfire)

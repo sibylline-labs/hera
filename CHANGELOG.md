@@ -7,6 +7,19 @@ the version is 0.x, a minor release may break the API.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-26
+
+### Added
+
+- `HeraFlags.fromSource(source, options?)` takes `{ warnWindowMs?, maxContexts? }` (`HeraFlagSourceOptions`).
+
+- HTTP over Workers JS RPC on `@sibylline-labs/hera/rpc`: `HttpRpcRequest` / `HttpRpcReply` structured-clone envelopes, `toHttpRpcRequest` / `fromHttpRpcRequest` / `toHttpRpcReply` / `fromHttpRpcReply` (dual-read, 25 MiB default cap, `413` / `502` past it), and `Hera.httpRpcMethod` / `Hera.httpRpcClient`, so no `Request` or `Response` stream crosses a service binding (cloudflare/workerd#8674).
+
+### Fixed
+
+- `HeraFlags` wrote its `hera.flags.fallback` line once per cause per held answer, so concurrent cache misses that failed together wrote one line each. It now writes one line per context per cause per window (the reader's `ttlMs`). An `unconfigured` reader now writes one line per context per window instead of one per reader.
+- `rpcMethod` success values keep `ArrayBuffer` and typed-array members instead of flattening them to `{}`.
+
 ### Changed
 
 - Rewrote `README.md` around what Hera is, why it exists, and concrete use cases; moved the full subpath exports and ambient-type tables into `docs/README.md` and refreshed `docs/ARCHITECTURE.md`.

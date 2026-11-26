@@ -63,6 +63,10 @@ export function toPlainValue(value: unknown): unknown {
   if (value instanceof Uint8Array) {
     return new Uint8Array(value)
   }
+  // Structured clone carries binary values as they are; walking their entries would drop the bytes.
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+    return value
+  }
   if (Array.isArray(value)) {
     return value.map((item) => toPlainValue(item))
   }
